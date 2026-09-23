@@ -1,0 +1,36 @@
+CREATE TABLE measurement (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    measured_at INTEGER NOT NULL,
+    weight_kg REAL NOT NULL,
+    fat_pct REAL NOT NULL,
+    heart_rate INTEGER NOT NULL,
+    feet_imp TEXT NOT NULL,
+    hands_imp TEXT NOT NULL,
+    device_ts TEXT NOT NULL,
+    fat_mass_kg REAL NOT NULL,
+    tbw_kg REAL NOT NULL,
+    bone_kg REAL NOT NULL,
+    muscle_kg REAL NOT NULL,
+    bmi REAL NOT NULL,
+    bmr REAL NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES user_profile(id)
+);
+
+forUser:
+SELECT *
+FROM measurement
+WHERE user_id = ?
+ORDER BY measured_at DESC;
+
+insert:
+INSERT INTO measurement(
+    user_id, measured_at, weight_kg, fat_pct, heart_rate,
+    feet_imp, hands_imp, device_ts,
+    fat_mass_kg, tbw_kg, bone_kg, muscle_kg, bmi, bmr
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+delete:
+DELETE FROM measurement
+WHERE id = ?;

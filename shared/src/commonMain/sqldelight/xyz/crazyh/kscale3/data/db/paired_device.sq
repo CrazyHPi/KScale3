@@ -1,0 +1,22 @@
+CREATE TABLE paired_device (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    mac TEXT NOT NULL,
+    name TEXT NOT NULL,
+    model TEXT,
+    sn TEXT,
+    last_seen INTEGER NOT NULL
+);
+
+-- 单台秤：取最近一次保存的记录
+get:
+SELECT *
+FROM paired_device
+ORDER BY last_seen DESC
+LIMIT 1;
+
+insert:
+INSERT INTO paired_device(mac, name, model, sn, last_seen)
+VALUES (?, ?, ?, ?, ?);
+
+deleteAll:
+DELETE FROM paired_device;

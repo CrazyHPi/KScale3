@@ -1,0 +1,39 @@
+CREATE TABLE user_profile (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    sex INTEGER NOT NULL,
+    age INTEGER NOT NULL,
+    height_cm INTEGER NOT NULL,
+    goal_weight REAL,
+    huid TEXT UNIQUE,
+    registered_at INTEGER,
+    created_at INTEGER NOT NULL
+);
+
+selectAll:
+SELECT *
+FROM user_profile
+ORDER BY id;
+
+byId:
+SELECT *
+FROM user_profile
+WHERE id = ?;
+
+insert:
+INSERT INTO user_profile(name, sex, age, height_cm, goal_weight, huid, registered_at, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+updateProfile:
+UPDATE user_profile
+SET name = ?, sex = ?, age = ?, height_cm = ?, goal_weight = ?
+WHERE id = ?;
+
+markRegistered:
+UPDATE user_profile
+SET huid = ?, registered_at = ?
+WHERE id = ?;
+
+delete:
+DELETE FROM user_profile
+WHERE id = ?;
