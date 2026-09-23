@@ -15,4 +15,11 @@ enum class FrameMagic(val byte: Int) {
 
     /** 0xCD 加密下行 */
     EncryptedDownstream(0xCD),
+    ;
+
+    companion object {
+        /** 按魔数字节反查；非法返回 null。 */
+        fun fromByte(b: Int): FrameMagic? =
+            entries.firstOrNull { it.byte == (b and 0xFF) }
+    }
 }
