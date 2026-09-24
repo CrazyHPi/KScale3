@@ -17,6 +17,7 @@ import xyz.crazyh.kscale3.data.repository.SqlUserRepository
 import xyz.crazyh.kscale3.data.repository.UserRepository
 import xyz.crazyh.kscale3.session.ScaleSession
 import xyz.crazyh.kscale3.session.ScaleSessionImpl
+import xyz.crazyh.kscale3.session.SessionOptions
 
 /**
  * 手写构造注入容器（PLAN 架构决策：不上 Koin）。
@@ -40,6 +41,6 @@ class AppContainer(private val driverFactory: DriverFactory) {
         KableBlePeripheral(Peripheral(identifier))
 
     /** 每次称重/配对新建会话。 */
-    fun createScaleSession(peripheral: BlePeripheral): ScaleSession =
-        ScaleSessionImpl(peripheral)
+    fun createScaleSession(peripheral: BlePeripheral, options: SessionOptions = SessionOptions()): ScaleSession =
+        ScaleSessionImpl(peripheral, options)
 }

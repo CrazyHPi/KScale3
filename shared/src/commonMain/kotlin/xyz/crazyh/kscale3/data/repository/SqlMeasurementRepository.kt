@@ -21,6 +21,9 @@ class SqlMeasurementRepository(
     override fun forUser(userId: Long): Flow<List<Measurement>> =
         queries.forUser(userId).asFlow().map { query -> query.executeAsList().map { it.toDomain() } }
 
+    override fun getAll(): Flow<List<Measurement>> =
+        queries.selectAll().asFlow().map { query -> query.executeAsList().map { it.toDomain() } }
+
     override suspend fun insert(measurement: Measurement): Long = db.transactionWithResult {
         queries.insert(
             measurement.userId,

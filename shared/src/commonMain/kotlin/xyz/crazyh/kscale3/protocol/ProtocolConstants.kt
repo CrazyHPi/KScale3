@@ -9,6 +9,15 @@ package xyz.crazyh.kscale3.protocol
  */
 typealias MacAddress = String
 
+/**
+ * MAC 格式校验（UI 输入框用）：`XX:XX:XX:XX:XX:XX` / 连字符 / 12 位 HEX 均可。
+ * 与 [ScaleCrypto.deriveRootKey] 的归一规则一致。
+ */
+fun MacAddress.isValidMacAddress(): Boolean {
+    val cleaned = replace(":", "").replace("-", "")
+    return cleaned.length == 12 && cleaned.all { it in "0123456789ABCDEF" || it in "0123456789abcdef" }
+}
+
 /** 协议静态常量与固定线上报文（TECH.md §2.1 / §3）。 */
 object ProtocolConstants {
     /** 认证静态常量（TECH.md §2.1）。 */

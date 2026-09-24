@@ -24,6 +24,7 @@ class SqlDeviceRepository(
             queries.deleteAll()
             queries.insert(
                 device.mac,
+                device.bleId,
                 device.name,
                 device.model,
                 device.sn,
@@ -36,6 +37,7 @@ class SqlDeviceRepository(
 private fun Paired_device.toDomain(): PairedDevice = PairedDevice(
     id = id,
     mac = mac,
+    bleId = ble_id,
     name = name,
     model = model,
     sn = sn,

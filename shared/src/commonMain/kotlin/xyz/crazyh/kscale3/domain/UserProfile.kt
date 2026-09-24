@@ -24,3 +24,7 @@ data class UserProfile(
      */
     val lastWeightKg: Double? = null,
 )
+
+/** Mode 1 注册/重注册用（HUID 由 [HuidGenerator] 重新生成）。 */
+fun UserProfile.toDraft(): UserProfileDraft =
+    UserProfileDraft(name = name, sex = sex, age = age, heightCm = heightCm, goalWeightKg = goalWeightKg)
