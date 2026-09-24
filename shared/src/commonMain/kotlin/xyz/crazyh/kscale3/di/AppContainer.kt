@@ -7,8 +7,13 @@ import xyz.crazyh.kscale3.ble.BleScanner
 import xyz.crazyh.kscale3.ble.KableBlePeripheral
 import xyz.crazyh.kscale3.ble.KableBleScanner
 import xyz.crazyh.kscale3.data.db.DriverFactory
+import xyz.crazyh.kscale3.data.db.KScale3Database
+import xyz.crazyh.kscale3.data.db.createDatabase
 import xyz.crazyh.kscale3.data.repository.DeviceRepository
 import xyz.crazyh.kscale3.data.repository.MeasurementRepository
+import xyz.crazyh.kscale3.data.repository.SqlDeviceRepository
+import xyz.crazyh.kscale3.data.repository.SqlMeasurementRepository
+import xyz.crazyh.kscale3.data.repository.SqlUserRepository
 import xyz.crazyh.kscale3.data.repository.UserRepository
 import xyz.crazyh.kscale3.session.ScaleSession
 import xyz.crazyh.kscale3.session.ScaleSessionImpl
@@ -19,11 +24,13 @@ import xyz.crazyh.kscale3.session.ScaleSessionImpl
  */
 class AppContainer(private val driverFactory: DriverFactory) {
 
-    val userRepository: UserRepository get() = TODO("Phase 3: data + domain")
+    private val database: KScale3Database by lazy { createDatabase(driverFactory) }
 
-    val measurementRepository: MeasurementRepository get() = TODO("Phase 3: data + domain")
+    val userRepository: UserRepository by lazy { SqlUserRepository(database) }
 
-    val deviceRepository: DeviceRepository get() = TODO("Phase 3: data + domain")
+    val measurementRepository: MeasurementRepository by lazy { SqlMeasurementRepository(database) }
+
+    val deviceRepository: DeviceRepository by lazy { SqlDeviceRepository(database) }
 
     /** 扫描（名称过滤 `HaigeBLE|Scale 3|HUAWEI Scale` 由调用方约定）。 */
     fun createBleScanner(): BleScanner = KableBleScanner(Scanner { })

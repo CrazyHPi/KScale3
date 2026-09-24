@@ -7,6 +7,7 @@ CREATE TABLE user_profile (
     goal_weight REAL,
     huid TEXT UNIQUE,
     registered_at INTEGER,
+    last_weight_kg REAL,
     created_at INTEGER NOT NULL
 );
 
@@ -21,8 +22,8 @@ FROM user_profile
 WHERE id = ?;
 
 insert:
-INSERT INTO user_profile(name, sex, age, height_cm, goal_weight, huid, registered_at, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO user_profile(name, sex, age, height_cm, goal_weight, huid, registered_at, last_weight_kg, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateProfile:
 UPDATE user_profile
@@ -32,6 +33,12 @@ WHERE id = ?;
 markRegistered:
 UPDATE user_profile
 SET huid = ?, registered_at = ?
+WHERE id = ?;
+
+-- 0x31 type=0 的 Estimated Weight（"日常用上次测量值"）；由 measurement 插入同事务回写
+updateLastWeight:
+UPDATE user_profile
+SET last_weight_kg = ?
 WHERE id = ?;
 
 delete:

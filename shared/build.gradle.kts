@@ -70,6 +70,9 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
         }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.sqldelight.sqlite.driver)
+        }
         iosMain.dependencies {
             implementation(libs.sqldelight.native.driver)
         }
