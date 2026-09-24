@@ -7,6 +7,9 @@ import xyz.crazyh.kscale3.domain.MeasurementResult
  * 全部步骤暴露为 StateFlow 供 UI 显示引导文案。
  */
 sealed interface SessionState {
+    /** 尚未开始（或已结束回到空闲）。 */
+    data object Idle : SessionState
+
     data object Connecting : SessionState
 
     /** 公共握手：0x21/0x25/0x29/0xD7。 */
@@ -29,6 +32,9 @@ sealed interface SessionState {
     data object Committing : SessionState
 
     data class Done(val result: MeasurementResult) : SessionState
+
+    /** Mode 1 成功终态（HUID 已注册；测量结果经 [PairingResult.Success] 返回，可能缺 BIA）。 */
+    data class Paired(val huid: String) : SessionState
 
     data class Failed(val error: SessionError) : SessionState
 }

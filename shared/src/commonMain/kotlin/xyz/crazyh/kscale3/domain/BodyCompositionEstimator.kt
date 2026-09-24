@@ -22,5 +22,35 @@ object BodyCompositionEstimator {
         heightCm: Int,
         sex: Sex,
         age: Int,
-    ): BodyCompositionEstimates = TODO("Phase 3: data + domain")
+    ): BodyCompositionEstimates {
+        require(weightKg > 0.0) { "weightKg must be positive: $weightKg" }
+        require(fatPct in 0.0..100.0) { "fatPct out of 0..100: $fatPct" }
+        require(heightCm > 0) { "heightCm must be positive: $heightCm" }
+        require(age > 0) { "age must be positive: $age" }
+
+        val fatMass = weightKg * fatPct / 100.0
+        val ffm = weightKg - fatMass
+        val heightM = heightCm / 100.0
+        val bmr = when (sex) {
+            Sex.Male -> 10.0 * weightKg + 6.25 * heightCm - 5.0 * age + 5.0
+            Sex.Female -> 10.0 * weightKg + 6.25 * heightCm - 5.0 * age - 161.0
+        }
+        return BodyCompositionEstimates(
+            fatMassKg = fatMass,
+            tbwKg = TBW_RATE * ffm,
+            boneKg = BONE_RATE * ffm,
+            muscleKg = MUSCLE_RATE * ffm,
+            bmi = weightKg / (heightM * heightM),
+            bmr = bmr,
+        )
+    }
+
+    /** 脱脂组织水合率（Pace & Rathbun；个体 0.70–0.75）。 */
+    private const val TBW_RATE = 0.73
+
+    /** 骨量/FFM 经验系数（消费级体脂秤常见值）。 */
+    private const val BONE_RATE = 0.0534
+
+    /** 肌肉量/FFM 经验系数。 */
+    private const val MUSCLE_RATE = 0.50
 }

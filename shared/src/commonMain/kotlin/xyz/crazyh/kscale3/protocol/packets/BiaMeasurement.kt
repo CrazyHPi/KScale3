@@ -33,6 +33,23 @@ data class BiaMeasurement(
     /** 手部 6 路原始阻抗 */
     val hands: List<Int>,
 ) {
+    /**
+     * 合理性过滤（PLAN 风险项 7 兜底）：MAC 填错 → RootKey 错 → WorkKey 对不上 → 解密出乱码，
+     * 表现为体重/日期/心率荒谬。过滤后继续等下一帧；若只收到过不合理帧，会话层提示
+     * [xyz.crazyh.kscale3.session.SessionError.MacInvalid]（"MAC 可能错误"）。
+     */
+    fun isPlausible(): Boolean =
+        weightKg in 5.0..300.0 &&
+            fatPct in 1.0..80.0 &&
+            year in 2020..2099 &&
+            month in 1..12 &&
+            day in 1..31 &&
+            hour in 0..23 &&
+            minute in 0..59 &&
+            second in 0..59 &&
+            heartRate in 0..220 &&
+            feet.size == 6 && hands.size == 6
+
     companion object {
         const val SIZE: Int = 38
 

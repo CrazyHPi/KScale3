@@ -18,4 +18,9 @@ data class UserProfile(
     /** null = 未注册 */
     val registeredAt: Instant?,
     val createdAt: Instant,
+    /**
+     * 上次测量体重 kg（0x31 type=0 的 Estimated Weight 字段，"日常用上次测量值"）。
+     * 由数据层从最近测量回填；null/首次 → 0。配对流程改用 0x2D 皮重，不读此字段。
+     */
+    val lastWeightKg: Double? = null,
 )

@@ -1,6 +1,7 @@
 package xyz.crazyh.kscale3.ble
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * BLE 外设薄封装（Kable 之上的接口，便于 Fake 测试）。
@@ -12,6 +13,9 @@ interface BlePeripheral {
     val identifier: String
 
     val name: String?
+
+    /** 连接状态（会话层据此映射 SessionError.Disconnected）。 */
+    val isConnected: StateFlow<Boolean>
 
     suspend fun connect()
 
