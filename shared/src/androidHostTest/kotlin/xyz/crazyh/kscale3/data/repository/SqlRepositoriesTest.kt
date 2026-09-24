@@ -166,17 +166,39 @@ class SqlRepositoriesTest {
         val repo = SqlDeviceRepository(db)
         assertNull(repo.observe().first())
 
-        repo.save(PairedDevice(id = 0, mac = "AA:BB:CC:DD:EE:FF", name = "HaigeBLE", model = "M00F7", sn = "SN42", lastSeen = t0))
+        repo.save(
+            PairedDevice(
+                id = 0,
+                mac = "AA:BB:CC:DD:EE:FF",
+                bleId = "AA:BB:CC:DD:EE:FF",
+                name = "HaigeBLE",
+                model = "M00F7",
+                sn = "SN42",
+                lastSeen = t0,
+            ),
+        )
         val device = repo.observe().first()!!
         assertEquals("AA:BB:CC:DD:EE:FF", device.mac)
+        assertEquals("AA:BB:CC:DD:EE:FF", device.bleId)
         assertEquals("M00F7", device.model)
         assertEquals("SN42", device.sn)
         assertEquals(t0, device.lastSeen)
 
-        // 单台秤：save 覆盖旧记录
-        repo.save(PairedDevice(id = 0, mac = "11:22:33:44:55:66", name = "HaigeBLE-2", model = null, sn = null, lastSeen = Instant.fromEpochMilliseconds(t0.toEpochMilliseconds() + 1)))
+        // 单台秤：save 覆盖旧记录（iOS 场景 bleId=CoreBluetooth UUID ≠ mac）
+        repo.save(
+            PairedDevice(
+                id = 0,
+                mac = "11:22:33:44:55:66",
+                bleId = "00000000-0000-0000-0000-00000000f00d",
+                name = "HaigeBLE-2",
+                model = null,
+                sn = null,
+                lastSeen = Instant.fromEpochMilliseconds(t0.toEpochMilliseconds() + 1),
+            ),
+        )
         val replaced = repo.observe().first()!!
         assertEquals("11:22:33:44:55:66", replaced.mac)
+        assertEquals("00000000-0000-0000-0000-00000000f00d", replaced.bleId)
         assertNull(replaced.model)
     }
 }
