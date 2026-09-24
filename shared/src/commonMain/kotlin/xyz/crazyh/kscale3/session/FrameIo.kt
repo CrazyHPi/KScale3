@@ -3,6 +3,7 @@ package xyz.crazyh.kscale3.session
 import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -34,11 +35,13 @@ internal class FrameIo(
 
     private val queues = mutableMapOf<String, Channel<Inbound>>()
 
-    fun start() {
+    /** Launch session-lifetime collectors; caller cancels the returned jobs on teardown. */
+    fun start(): List<Job> {
+        val jobs = mutableListOf<Job>()
         for (uuid in FRAMED_UUIDS) {
             val queue = Channel<Inbound>(Channel.BUFFERED)
             queues[uuid] = queue
-            scope.launch {
+            jobs += scope.launch {
                 val reassembler = FrameReassembler()
                 try {
                     peripheral.observe(uuid).collect { raw ->
@@ -58,7 +61,7 @@ internal class FrameIo(
             }
         }
         for (uuid in LOG_ONLY_UUIDS) {
-            scope.launch {
+            jobs += scope.launch {
                 try {
                     peripheral.observe(uuid).collect { raw -> onLog?.invoke("[RX $uuid] ${raw.toHex()}") }
                 } catch (e: CancellationException) {
@@ -68,6 +71,7 @@ internal class FrameIo(
                 }
             }
         }
+        return jobs
     }
 
     suspend fun receive(uuid: String, step: String): Frame {

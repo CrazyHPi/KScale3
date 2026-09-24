@@ -122,24 +122,24 @@ class ScaleSessionImpl(
 
         return coroutineScope {
             activeJob = coroutineContext[Job]
+            _state.value = SessionState.Connecting
             try {
-                _state.value = SessionState.Connecting
-                try {
-                    peripheral.connect()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    throw SessionException(SessionError.Disconnected, cause = e)
-                }
+                peripheral.connect()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw SessionException(SessionError.Disconnected, cause = e)
+            }
 
-                // mid-session disconnect watcher (true -> false counts as disconnect)
-                launch {
-                    peripheral.isConnected.dropWhile { !it }.first { !it }
-                    throw SessionException(SessionError.Disconnected)
-                }
+            // mid-session disconnect watcher (true -> false counts as disconnect)
+            val watcher = launch {
+                peripheral.isConnected.dropWhile { !it }.first { !it }
+                throw SessionException(SessionError.Disconnected)
+            }
+            val io = FrameIo(peripheral, this, options.onLog)
+            val collectors = io.start()
 
-                val io = FrameIo(peripheral, this, options.onLog)
-                io.start()
+            try {
                 delay(options.timing.settle)
 
                 val workKey = handshake(rootKey, io)
@@ -167,6 +167,10 @@ class ScaleSessionImpl(
                 _state.value = SessionState.Failed(e.error)
                 throw e
             } finally {
+                // stop background children BEFORE disconnecting: otherwise the watcher
+                // sees the teardown disconnect and poisons a successful run with Disconnected
+                watcher.cancel()
+                collectors.forEach { it.cancel() }
                 activeJob = null
                 withContext(NonCancellable) {
                     runCatching { peripheral.disconnect() }
