@@ -108,6 +108,8 @@ fun UserEditScreen(
                         )
                     }
                     saved = true
+
+                    onBack()
                 }
             }
         }

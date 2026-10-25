@@ -51,6 +51,12 @@ fun WeighInScreen(
 
     var selected by remember { mutableStateOf<UserProfile?>(null) }
 
+    // 用户可能在其他 Tab 被删除：列表刷新后清掉失效选择，避免用已删档案发起会话
+    LaunchedEffect(users) {
+        val selectedId = selected?.id ?: return@LaunchedEffect
+        if (users.none { it.id == selectedId }) selected = null
+    }
+
     // 测量完成 → 结果屏
     LaunchedEffect(pending) {
         if (pending != null) onResultReady()

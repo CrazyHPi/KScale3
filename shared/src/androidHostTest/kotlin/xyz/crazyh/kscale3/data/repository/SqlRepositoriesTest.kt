@@ -76,6 +76,22 @@ class SqlRepositoriesTest {
     }
 
     @Test
+    fun user_delete_removesMeasurements() = runTest {
+        val db = createDb()
+        val users = SqlUserRepository(db, now = { t0 })
+        val measurements = SqlMeasurementRepository(db)
+        val userId = users.insert(draft)
+        measurements.insert(measurement(userId, weightKg = 70.0, measuredAt = t0))
+        assertEquals(1, measurements.forUser(userId).first().size)
+
+        users.delete(userId)
+
+        assertNull(users.byId(userId).first())
+        assertEquals(emptyList(), measurements.forUser(userId).first())
+        assertEquals(emptyList(), measurements.getAll().first())
+    }
+
+    @Test
     fun user_markRegistered_setsHuid() = runTest {
         val db = createDb()
         val repo = SqlUserRepository(db, now = { t0 })

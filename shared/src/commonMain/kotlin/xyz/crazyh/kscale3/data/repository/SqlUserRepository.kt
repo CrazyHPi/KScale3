@@ -63,6 +63,9 @@ class SqlUserRepository(
 
     override suspend fun delete(id: Long) {
         db.transaction {
+            // 同事务先清该用户的测量记录再删档案（measurement 表无 ON DELETE CASCADE，
+            // 否则会留下孤儿记录或触发外键约束）
+            db.measurementQueries.deleteForUser(id)
             queries.delete(id)
         }
     }

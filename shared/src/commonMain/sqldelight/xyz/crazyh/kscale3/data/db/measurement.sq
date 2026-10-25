@@ -39,3 +39,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 delete:
 DELETE FROM measurement
 WHERE id = ?;
+
+-- 删除用户档案时一并清理（measurement 无 ON DELETE CASCADE）
+deleteForUser:
+DELETE FROM measurement
+WHERE user_id = ?;

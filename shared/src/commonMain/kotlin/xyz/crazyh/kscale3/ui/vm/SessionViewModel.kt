@@ -152,6 +152,14 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         _hardwareInfo.value = HardwareInfo()
     }
 
+    /** 删除用户档案（连同其全部历史测量，同事务）；秤上已注册的 HUID 不受影响。 */
+    suspend fun deleteUser(user: UserProfile) {
+        if (_busy.value) return
+        container.userRepository.delete(user.id)
+        // 丢弃属于该用户的待保存结果，避免之后入库时引用已删除的 user_id
+        if (_pendingResult.value?.userId == user.id) _pendingResult.value = null
+    }
+
     // ---- 会话 ----
 
     private val _sessionState = MutableStateFlow<SessionState>(SessionState.Idle)
