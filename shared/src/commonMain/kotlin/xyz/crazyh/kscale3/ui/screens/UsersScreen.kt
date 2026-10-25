@@ -22,11 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import xyz.crazyh.kscale3.domain.UserProfile
+import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.components.SessionProgressDialog
 import xyz.crazyh.kscale3.ui.errorText
 import xyz.crazyh.kscale3.ui.sessionGuide
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
-import xyz.crazyh.kscale3.session.SessionState
 
 /**
  * 用户列表屏（PLAN UI-2）：档案列表、"已注册/未注册"徽章、目标体重、
@@ -108,7 +108,11 @@ private fun UserCard(
     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(user.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    user.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
                 AssistChip(
                     onClick = {},
                     label = { Text(if (user.huid != null) "已注册" else "未注册") },
@@ -117,8 +121,8 @@ private fun UserCard(
             }
             Text(
                 "${user.age} 岁 · ${user.heightCm} cm" +
-                    (user.goalWeightKg?.let { " · 目标 ${it} kg" } ?: "") +
-                    (user.lastWeightKg?.let { " · 上次 $it kg" } ?: ""),
+                        (user.goalWeightKg?.let { " · 目标 ${it} kg" } ?: "") +
+                        (user.lastWeightKg?.let { " · 上次 $it kg" } ?: ""),
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(Modifier.padding(top = 4.dp)) {

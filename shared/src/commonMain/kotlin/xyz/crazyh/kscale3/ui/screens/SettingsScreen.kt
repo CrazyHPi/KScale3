@@ -101,7 +101,10 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
                 Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
                 if (log.isEmpty()) {
-                    Text("（暂无——发起一次称重/注册后显示）", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "（暂无——发起一次称重/注册后显示）",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 log.takeLast(100).forEach { line ->
                     Text(line, style = MaterialTheme.typography.labelSmall)
@@ -117,7 +120,7 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
             text = {
                 Text(
                     "将清除本机保存的秤（MAC / BLE 标识），之后需要重新扫描配对。" +
-                        "用户档案、HUID 与历史测量不受影响。",
+                            "用户档案、HUID 与历史测量不受影响。",
                 )
             },
             confirmButton = {

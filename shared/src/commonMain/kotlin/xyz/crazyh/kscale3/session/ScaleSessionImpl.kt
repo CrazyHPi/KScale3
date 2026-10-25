@@ -1,12 +1,10 @@
 package xyz.crazyh.kscale3.session
 
-import kotlin.coroutines.coroutineContext
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +35,7 @@ import xyz.crazyh.kscale3.protocol.packets.BiaMeasurement
 import xyz.crazyh.kscale3.protocol.packets.TareResponse
 import xyz.crazyh.kscale3.protocol.packets.UserProfilePacket
 import xyz.crazyh.kscale3.protocol.toHex
+import kotlin.math.roundToInt
 
 /**
  * Scale session state machine (PLAN zh-CN docs; control scale3.py Scale3Driver.run).
@@ -75,7 +74,8 @@ class ScaleSessionImpl(
     }
 
     override suspend fun measure(user: UserProfile, mac: MacAddress): MeasurementResult {
-        val huid = requireNotNull(user.huid) { "user must be registered on the scale (huid) before measure()" }
+        val huid =
+            requireNotNull(user.huid) { "user must be registered on the scale (huid) before measure()" }
         val output = runOperation(mac, Mode.Routine(user, huid))
         val result = requireNotNull(output.result)
         _state.value = SessionState.Done(result)
@@ -204,19 +204,30 @@ class ScaleSessionImpl(
         io.writeRaw(GattUuids.AUTH_REQ, ProtocolConstants.QUERY_ARM)
         val randAFrame = io.await(GattUuids.AUTH_REQ, "randA", timing.randA)
         val randA = randAFrame.payload.let {
-            if (it.size < 16) throw SessionException(SessionError.UnexpectedReply("randA"), "randA ${it.size}B < 16B")
+            if (it.size < 16) throw SessionException(
+                SessionError.UnexpectedReply("randA"),
+                "randA ${it.size}B < 16B"
+            )
             it.copyOfRange(0, 16)
         }
 
         // 0x25: randB(16B)+tokenB(32B), clear 0xDB in 4 frames (20ms gap)
         val randB = secureRandomBytes(16)
         val tokenB = ScaleCrypto.generateTokenB(randA, randB)
-        io.writeFrames(GattUuids.AUTH_TOKENS, randB + tokenB, FrameMagic.PlainUpstream, timing.interFrameWrite)
+        io.writeFrames(
+            GattUuids.AUTH_TOKENS,
+            randB + tokenB,
+            FrameMagic.PlainUpstream,
+            timing.interFrameWrite
+        )
         if (options.verifyTokenA) {
             val tokenAFrame = io.await(GattUuids.AUTH_TOKENS, "tokenA", timing.tokenA)
             val expected = ScaleCrypto.generateTokenA(randA, randB)
             val got = tokenAFrame.payload.let {
-                if (it.size < 32) throw SessionException(SessionError.UnexpectedReply("tokenA"), "tokenA ${it.size}B < 32B")
+                if (it.size < 32) throw SessionException(
+                    SessionError.UnexpectedReply("tokenA"),
+                    "tokenA ${it.size}B < 32B"
+                )
                 it.copyOfRange(0, 32)
             }
             if (!got.contentEquals(expected)) throw SessionException(SessionError.TokenMismatch)
@@ -236,7 +247,11 @@ class ScaleSessionImpl(
 
         // 0xD7: raw 10B capability write (write-without-response; soft-fail like Python)
         try {
-            io.writeRaw(GattUuids.CAPABILITIES, ProtocolConstants.CAPABILITY_BYTES, withResponse = false)
+            io.writeRaw(
+                GattUuids.CAPABILITIES,
+                ProtocolConstants.CAPABILITY_BYTES,
+                withResponse = false
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -261,7 +276,11 @@ class ScaleSessionImpl(
             require(bytes.size <= 30) { "huid longer than 30B: $huid" }
             bytes.copyInto(buf)
         }
-        io.writeFrames(GattUuids.HUID_TARE, ScaleCrypto.encryptAesCtr(workKey, huid30), FrameMagic.EncryptedUpstream)
+        io.writeFrames(
+            GattUuids.HUID_TARE,
+            ScaleCrypto.encryptAesCtr(workKey, huid30),
+            FrameMagic.EncryptedUpstream
+        )
 
         // Tare weigh-in reply: [status u8][tare u16le /100kg][pad].
         // Real-device finding (2026-10-25, 3 consecutive attempts): after the HUID write this unit
@@ -284,14 +303,19 @@ class ScaleSessionImpl(
                 }
                 options.onLog?.invoke(
                     "[0x2D plain ${plain.size}B] ${plain.toHex()} -> status=${tare.status} " +
-                        "weight=${tare.weightKg}kg",
+                            "weight=${tare.weightKg}kg",
                 )
                 when {
                     (tare.status == 0 || tare.status == 1) && tare.weightKg in 1.0..300.0 ->
                         captured = (tare.weightKg * 100).roundToInt().coerceIn(0, 0xFFFF)
 
                     tare.status == 0 || tare.status == 1 -> Unit // no weigh-in yet: keep waiting
-                    else -> throw SessionException(SessionError.UnexpectedReply("tare", tare.status))
+                    else -> throw SessionException(
+                        SessionError.UnexpectedReply(
+                            "tare",
+                            tare.status
+                        )
+                    )
                 }
             }
             captured
@@ -313,7 +337,11 @@ class ScaleSessionImpl(
 
         // 0x52 time sync (private 8B layout, plaintext; ack soft)
         _state.value = SessionState.SyncingTime
-        io.writeFrames(GattUuids.TIME_SYNC, options.timeProvider().encode(), FrameMagic.PlainUpstream)
+        io.writeFrames(
+            GattUuids.TIME_SYNC,
+            options.timeProvider().encode(),
+            FrameMagic.PlainUpstream
+        )
         io.awaitSoft(GattUuids.TIME_SYNC, "timeSync", timing.timeSync)
 
         // Mode 1 only: 0x5A/0x7A/0x62 queries (Python STEP3.5, diff note 4)
@@ -339,7 +367,8 @@ class ScaleSessionImpl(
             ScaleCrypto.encryptAesCtr(workKey, profile.encode()),
             FrameMagic.EncryptedUpstream,
         )
-        val code = statusCode(io.await(GattUuids.USER_PROFILE, "profile", timing.profileFirst), "profile")
+        val code =
+            statusCode(io.await(GattUuids.USER_PROFILE, "profile", timing.profileFirst), "profile")
         options.onLog?.invoke("[0x31 type=0 weightDg=$profileWeightDg -> code=$code]")
         _state.value = SessionState.ProfileResponded(code)
         when (code) {
@@ -454,7 +483,7 @@ class ScaleSessionImpl(
                             }
                             options.onLog?.invoke(
                                 "BIA decoded: weight=${bia.weightKg}kg fat=${bia.fatPct}% " +
-                                    "hr=${bia.heartRate} feet=${bia.feet} hands=${bia.hands.size}",
+                                        "hr=${bia.heartRate} feet=${bia.feet} hands=${bia.hands.size}",
                             )
                             if (options.acceptFirstBiaFrame) {
                                 done.complete(bia)
@@ -505,7 +534,8 @@ class ScaleSessionImpl(
     private suspend fun queryConfig(io: FrameIo) {
         val frame = query(io, GattUuids.CONFIG, "0x62")
         if (frame != null && frame.payload.isNotEmpty()) {
-            _hardwareInfo.value = _hardwareInfo.value.copy(configCode = frame.payload[0].toInt() and 0xFF)
+            _hardwareInfo.value =
+                _hardwareInfo.value.copy(configCode = frame.payload[0].toInt() and 0xFF)
         }
     }
 
@@ -524,16 +554,20 @@ class ScaleSessionImpl(
     // ---- helpers ----
 
     /** 0xCD -> AES(WorkKey) decrypt; 0xBD -> plaintext as-is (same rule for 0x97 and 0x2D). */
-    private fun decryptBody(workKey: ByteArray, frame: Frame, step: String): ByteArray = when (frame.magic) {
-        FrameMagic.EncryptedDownstream -> try {
-            ScaleCrypto.decryptAesCtr(workKey, frame.payload)
-        } catch (e: IllegalArgumentException) {
-            throw SessionException(SessionError.UnexpectedReply(step), cause = e)
-        }
+    private fun decryptBody(workKey: ByteArray, frame: Frame, step: String): ByteArray =
+        when (frame.magic) {
+            FrameMagic.EncryptedDownstream -> try {
+                ScaleCrypto.decryptAesCtr(workKey, frame.payload)
+            } catch (e: IllegalArgumentException) {
+                throw SessionException(SessionError.UnexpectedReply(step), cause = e)
+            }
 
-        FrameMagic.PlainDownstream -> frame.payload
-        else -> throw SessionException(SessionError.UnexpectedReply(step), "unexpected upstream magic ${frame.magic}")
-    }
+            FrameMagic.PlainDownstream -> frame.payload
+            else -> throw SessionException(
+                SessionError.UnexpectedReply(step),
+                "unexpected upstream magic ${frame.magic}"
+            )
+        }
 
     /** Short status reply `bd 04 00 XX ...` -> payload first byte is the status code. */
     private fun statusCode(frame: Frame, step: String): Int {
@@ -551,6 +585,10 @@ class ScaleSessionImpl(
         val dow = bia.dayOfWeek.takeIf { it in 1..7 }
             ?: runCatching { LocalDate(bia.year, bia.month, bia.day).dayOfWeek.isoDayNumber }
                 .getOrDefault(0)
-        return "${bia.year}-${p2(bia.month)}-${p2(bia.day)}-${p2(bia.hour)}-${p2(bia.minute)}-${p2(bia.second)}+$dow"
+        return "${bia.year}-${p2(bia.month)}-${p2(bia.day)}-${p2(bia.hour)}-${p2(bia.minute)}-${
+            p2(
+                bia.second
+            )
+        }+$dow"
     }
 }

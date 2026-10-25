@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -12,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 import xyz.crazyh.kscale3.ble.BleAdvertisement
@@ -202,7 +202,12 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     fun savePendingMeasurement() {
         val pending = _pendingResult.value ?: return
         viewModelScope.launch {
-            container.measurementRepository.insert(pending.result.toMeasurement(pending.userId, now()))
+            container.measurementRepository.insert(
+                pending.result.toMeasurement(
+                    pending.userId,
+                    now()
+                )
+            )
             _pendingResult.value = null
         }
     }
@@ -232,7 +237,8 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
                 // StateFlow 收集是异步的：先同步终态，避免 cancel 掉 collector 时丢掉
                 // 最后一次 Failed/Paired 发射（真机表现为对话框永远停在 AwaitingMeasurement）。
                 // 用户取消时协程已非 active——保持 Idle，勿把会话最后状态同步回来。
-                _sessionState.value = if (currentCoroutineContext().isActive) s.state.value else SessionState.Idle
+                _sessionState.value =
+                    if (currentCoroutineContext().isActive) s.state.value else SessionState.Idle
                 stateJob.cancel()
                 infoJob.cancel()
                 _busy.value = false
@@ -249,4 +255,9 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
 
 /** 名称疑似华为秤（PLAN 过滤词）；只作排序/徽章提示，不隐藏其他设备。 */
 fun BleAdvertisement.isLikelyScale(): Boolean =
-    name?.let { Regex("HaigeBLE|Scale 3|HUAWEI Scale", RegexOption.IGNORE_CASE).containsMatchIn(it) } == true
+    name?.let {
+        Regex(
+            "HaigeBLE|Scale 3|HUAWEI Scale",
+            RegexOption.IGNORE_CASE
+        ).containsMatchIn(it)
+    } == true

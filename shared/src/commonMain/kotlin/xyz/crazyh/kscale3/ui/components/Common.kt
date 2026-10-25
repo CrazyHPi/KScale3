@@ -20,10 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlin.math.pow
-import kotlin.math.roundToInt
 import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.sessionGuide
+import kotlin.math.pow
+import kotlin.math.roundToInt
 
 /** 数值格式化（KMP 无 String.format）：四舍五入到 [decimals] 位。 */
 fun Double.rounded(decimals: Int): String {
@@ -62,7 +62,11 @@ fun MetricCard(title: String, badge: String? = null, content: @Composable () -> 
     Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
                 if (badge != null) {
                     Text(
                         "  $badge",

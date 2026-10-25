@@ -1,10 +1,5 @@
 package xyz.crazyh.kscale3.session
 
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
@@ -12,6 +7,11 @@ import xyz.crazyh.kscale3.ble.GattUuids
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.protocol.packets.TimeSyncPacket
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 /** Mode 2 (routine measure) happy path, Code 1/2 branches, timeouts, disconnect, CRC, MAC. */
 class ScaleSessionTest {
@@ -61,9 +61,17 @@ class ScaleSessionTest {
 
         // 0x7A/0x8F queries then refresh
         scale.awaitQuery(GattUuids.MODEL)
-        scale.sendFrames(GattUuids.MODEL, "M00F7".encodeToByteArray(), xyz.crazyh.kscale3.protocol.FrameMagic.PlainDownstream)
+        scale.sendFrames(
+            GattUuids.MODEL,
+            "M00F7".encodeToByteArray(),
+            xyz.crazyh.kscale3.protocol.FrameMagic.PlainDownstream
+        )
         scale.awaitQuery(GattUuids.OFFLINE_HISTORY)
-        scale.sendFrames(GattUuids.OFFLINE_HISTORY, byteArrayOf(0x01, 0x02), xyz.crazyh.kscale3.protocol.FrameMagic.PlainDownstream)
+        scale.sendFrames(
+            GattUuids.OFFLINE_HISTORY,
+            byteArrayOf(0x01, 0x02),
+            xyz.crazyh.kscale3.protocol.FrameMagic.PlainDownstream
+        )
         val refresh = scale.awaitProfilePacket()
         assertEquals(0, refresh.type)
         scale.sendStatus(GattUuids.USER_PROFILE, 0)
@@ -94,19 +102,36 @@ class ScaleSessionTest {
         assertEquals(
             listOf(
                 GattUuids.AUTH_REQ,
-                GattUuids.AUTH_TOKENS, GattUuids.AUTH_TOKENS, GattUuids.AUTH_TOKENS, GattUuids.AUTH_TOKENS,
-                GattUuids.WORK_KEY, GattUuids.WORK_KEY, GattUuids.WORK_KEY,
+                GattUuids.AUTH_TOKENS,
+                GattUuids.AUTH_TOKENS,
+                GattUuids.AUTH_TOKENS,
+                GattUuids.AUTH_TOKENS,
+                GattUuids.WORK_KEY,
+                GattUuids.WORK_KEY,
+                GattUuids.WORK_KEY,
                 GattUuids.CAPABILITIES,
                 GattUuids.TIME_SYNC,
-                GattUuids.USER_PROFILE, GattUuids.USER_PROFILE, GattUuids.USER_PROFILE,
-                GattUuids.USER_PROFILE, GattUuids.USER_PROFILE, GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
                 GattUuids.MODEL,
                 GattUuids.OFFLINE_HISTORY,
-                GattUuids.USER_PROFILE, GattUuids.USER_PROFILE, GattUuids.USER_PROFILE,
-                GattUuids.USER_PROFILE, GattUuids.USER_PROFILE, GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
                 GattUuids.BIA,
-                GattUuids.USER_PROFILE, GattUuids.USER_PROFILE, GattUuids.USER_PROFILE,
-                GattUuids.USER_PROFILE, GattUuids.USER_PROFILE, GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
+                GattUuids.USER_PROFILE,
             ),
             uuids,
         )

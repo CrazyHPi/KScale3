@@ -1,11 +1,5 @@
 package xyz.crazyh.kscale3.session
 
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import xyz.crazyh.kscale3.ble.GattUuids
@@ -15,13 +9,25 @@ import xyz.crazyh.kscale3.domain.UserProfileDraft
 import xyz.crazyh.kscale3.protocol.FrameMagic
 import xyz.crazyh.kscale3.protocol.hexToBytes
 import xyz.crazyh.kscale3.protocol.packets.TimeSyncPacket
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Mode 1 (flash pairing): full path, tare failures, tail softness, unbind switch, safeWrite flip. */
 class ScaleSessionPairingTest {
 
     private val fixedTime = TimeSyncPacket(2026, 9, 22, 14, 30, 5, 2)
 
-    private val draft = UserProfileDraft(name = "newbie", sex = Sex.Male, age = 30, heightCm = 175, goalWeightKg = null)
+    private val draft = UserProfileDraft(
+        name = "newbie",
+        sex = Sex.Male,
+        age = 30,
+        heightCm = 175,
+        goalWeightKg = null
+    )
 
     private fun options(
         sendUnbindStep: Boolean = false,
@@ -47,7 +53,8 @@ class ScaleSessionPairingTest {
 
         // 0x2D HUID (4 frames) -> decrypted HUID matches the returned one (checked after)
         val huidWire = scale.collectFrames(GattUuids.HUID_TARE, expectedFrames = 4)
-        val huidPlain = xyz.crazyh.kscale3.protocol.ScaleCrypto.decryptAesCtr(scale.workKey, huidWire)
+        val huidPlain =
+            xyz.crazyh.kscale3.protocol.ScaleCrypto.decryptAesCtr(scale.workKey, huidWire)
         assertEquals(30, huidPlain.size)
 
         // tare reply 62.34kg (golden 005a1800)
@@ -162,7 +169,10 @@ class ScaleSessionPairingTest {
 
         val result = job.await()
         assertIs<PairingResult.Failure>(result)
-        assertEquals(SessionError.UnexpectedReply("tare", 7), (result as PairingResult.Failure).error)
+        assertEquals(
+            SessionError.UnexpectedReply("tare", 7),
+            (result as PairingResult.Failure).error
+        )
     }
 
     @Test
@@ -322,14 +332,24 @@ class ScaleSessionPairingTest {
             }
         }
         val session = ScaleSessionImpl(scale.peripheral, options())
-        val job = async { runCatching { session.measure(
-            xyz.crazyh.kscale3.domain.UserProfile(
-                id = 1, name = "t", sex = Sex.Male, age = 30, heightCm = 175,
-                goalWeightKg = null, huid = "30033000012345678",
-                registeredAt = null, createdAt = kotlinx.datetime.Instant.fromEpochMilliseconds(0),
-            ),
-            TEST_MAC,
-        ) } }
+        val job = async {
+            runCatching {
+                session.measure(
+                    xyz.crazyh.kscale3.domain.UserProfile(
+                        id = 1,
+                        name = "t",
+                        sex = Sex.Male,
+                        age = 30,
+                        heightCm = 175,
+                        goalWeightKg = null,
+                        huid = "30033000012345678",
+                        registeredAt = null,
+                        createdAt = kotlinx.datetime.Instant.fromEpochMilliseconds(0),
+                    ),
+                    TEST_MAC,
+                )
+            }
+        }
 
         // drive the whole handshake (first AUTH_REQ write fails, flip retry succeeds inside it)
         scale.handshake()

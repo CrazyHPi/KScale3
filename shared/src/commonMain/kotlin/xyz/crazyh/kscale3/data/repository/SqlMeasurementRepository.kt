@@ -4,12 +4,12 @@ import app.cash.sqldelight.coroutines.asFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import xyz.crazyh.kscale3.data.db.KScale3Database
-import xyz.crazyh.kscale3.data.db.Measurement as MeasurementRow
 import xyz.crazyh.kscale3.data.db.instantFromEpochMs
 import xyz.crazyh.kscale3.data.db.toEpochMs
 import xyz.crazyh.kscale3.data.db.toImpedanceCsv
 import xyz.crazyh.kscale3.data.db.toImpedanceList
 import xyz.crazyh.kscale3.domain.Measurement
+import xyz.crazyh.kscale3.data.db.Measurement as MeasurementRow
 
 /** [MeasurementRepository] 的 SQLDelight 实装（`measurement` 表）。 */
 class SqlMeasurementRepository(
@@ -19,7 +19,8 @@ class SqlMeasurementRepository(
     private val queries get() = db.measurementQueries
 
     override fun forUser(userId: Long): Flow<List<Measurement>> =
-        queries.forUser(userId).asFlow().map { query -> query.executeAsList().map { it.toDomain() } }
+        queries.forUser(userId).asFlow()
+            .map { query -> query.executeAsList().map { it.toDomain() } }
 
     override fun getAll(): Flow<List<Measurement>> =
         queries.selectAll().asFlow().map { query -> query.executeAsList().map { it.toDomain() } }

@@ -1,13 +1,13 @@
 package xyz.crazyh.kscale3.protocol
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 import xyz.crazyh.kscale3.protocol.packets.BiaMeasurement
 import xyz.crazyh.kscale3.protocol.packets.TareResponse
 import xyz.crazyh.kscale3.protocol.packets.TimeSyncPacket
 import xyz.crazyh.kscale3.protocol.packets.UserProfilePacket
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /** 黄金向量 5/6/7 + 报文负例（PLAN「测试与验证」）。 */
 class PacketsTest {
@@ -73,7 +73,9 @@ class PacketsTest {
         assertFailsWith<IllegalArgumentException> { goldenProfile(0, 1).copy(sex = 2).encode() }
         assertFailsWith<IllegalArgumentException> { goldenProfile(1, 1).encode() }
         assertFailsWith<IllegalArgumentException> { goldenProfile(0, 1).copy(age = 256).encode() }
-        assertFailsWith<IllegalArgumentException> { goldenProfile(0, 1).copy(heightCm = 65536).encode() }
+        assertFailsWith<IllegalArgumentException> {
+            goldenProfile(0, 1).copy(heightCm = 65536).encode()
+        }
         // 提交帧体重必须为 0
         assertFailsWith<IllegalArgumentException> { goldenProfile(2, 1).encode() }
         assertFailsWith<IllegalArgumentException> { UserProfilePacket.decode(ByteArray(68)) }
@@ -83,7 +85,8 @@ class PacketsTest {
 
     @Test
     fun bia_decode_golden() {
-        val data = "521cd700ea0709160e1e05020001010102010301040105014100000201020202030204020502".hexToBytes()
+        val data =
+            "521cd700ea0709160e1e05020001010102010301040105014100000201020202030204020502".hexToBytes()
         val bia = BiaMeasurement.decode(data)
         assertEquals(72.50, bia.weightKg)
         assertEquals(21.5, bia.fatPct)
@@ -103,7 +106,8 @@ class PacketsTest {
     fun bia_decode_26B_realDevice() {
         // 2026-10-25 真机 0x97 明文（离线用 0x29 下发的 WorkKey 解出）：
         // 57.6kg / 14.3% / 2026-10-25 23:23:23 / 阻抗 5553 / HR 87；无手部阻抗
-        val bia = BiaMeasurement.decode("80168f00ea070a19171717a0b115000000000000000000005700".hexToBytes())
+        val bia =
+            BiaMeasurement.decode("80168f00ea070a19171717a0b115000000000000000000005700".hexToBytes())
         assertEquals(57.6, bia.weightKg)
         assertEquals(14.3, bia.fatPct)
         assertEquals(2026, bia.year)

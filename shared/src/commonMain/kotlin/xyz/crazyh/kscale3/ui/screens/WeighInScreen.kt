@@ -84,8 +84,13 @@ fun WeighInScreen(
                     onClick = { selected = user },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 ) {
-                    Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = selected?.id == user.id, onClick = { selected = user })
+                    Row(
+                        Modifier.fillMaxWidth().padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selected?.id == user.id,
+                            onClick = { selected = user })
                         Column(Modifier.weight(1f)) {
                             Text(user.name, fontWeight = FontWeight.Bold)
                             Text(
@@ -101,7 +106,11 @@ fun WeighInScreen(
         // 会话引导（非弹窗态也在屏上显示当前步骤）
         when (val s = sessionState) {
             is SessionState.Failed -> {
-                Text(errorText(s.error), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 4.dp))
+                Text(
+                    errorText(s.error),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
                 RecoveryRow(
                     error = s.error,
                     onRetry = { selected?.let { vm.startWeighIn(it) } },
@@ -116,7 +125,7 @@ fun WeighInScreen(
             SessionState.AwaitingTare, SessionState.SyncingTime, SessionState.SendingProfile,
             is SessionState.ProfileResponded, SessionState.AwaitingMeasurement,
             SessionState.Committing, is SessionState.Paired,
-            -> if (busy) Text(sessionGuide(s), modifier = Modifier.padding(vertical = 4.dp))
+                -> if (busy) Text(sessionGuide(s), modifier = Modifier.padding(vertical = 4.dp))
         }
 
         Button(
@@ -145,7 +154,10 @@ private fun RecoveryRow(
             SessionError.MissingTare -> Button(onClick = onGoRegister) { Text("去注册（补验证称重）") }
             SessionError.UserNotRecognised -> {
                 Button(onClick = onGoRegister) { Text("重新注册") }
-                OutlinedButton(onClick = onChangeUser, modifier = Modifier.padding(start = 8.dp)) { Text("换人") }
+                OutlinedButton(
+                    onClick = onChangeUser,
+                    modifier = Modifier.padding(start = 8.dp)
+                ) { Text("换人") }
             }
 
             SessionError.MacInvalid -> Button(onClick = onGoDevice) { Text("修改 MAC") }

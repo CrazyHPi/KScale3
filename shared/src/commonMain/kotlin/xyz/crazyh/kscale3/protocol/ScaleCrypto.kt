@@ -1,5 +1,6 @@
 package xyz.crazyh.kscale3.protocol
 
+import xyz.crazyh.kscale3.protocol.ScaleCrypto.encryptAesCtr
 import xyz.crazyh.kscale3.protocol.crypto.aesCtrDecrypt
 import xyz.crazyh.kscale3.protocol.crypto.aesCtrEncrypt
 import xyz.crazyh.kscale3.protocol.crypto.hmacSha256

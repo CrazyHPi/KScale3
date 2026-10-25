@@ -163,10 +163,18 @@ fun UserEditScreen(
         )
 
         error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
         if (saved) {
-            Text("已保存", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                "已保存",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
         loaded?.huid?.let {
             Text("HUID：${maskHuid(it)}（已注册）", style = MaterialTheme.typography.bodySmall)

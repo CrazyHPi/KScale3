@@ -148,7 +148,8 @@ internal class TestScale(
 
     fun sendFrames(uuid: String, payload: ByteArray, magic: FrameMagic) {
         // 假秤=下行方向：真机实测下行 CRC=MODBUS（CrcRule.Downstream）
-        FrameCodec.packFrames(payload, magic, CrcRule.Downstream).forEach { peripheral.notify(uuid, it) }
+        FrameCodec.packFrames(payload, magic, CrcRule.Downstream)
+            .forEach { peripheral.notify(uuid, it) }
     }
 
     fun sendStatus(uuid: String, code: Int) {
@@ -192,7 +193,11 @@ internal class TestScale(
 // ---- frame / payload builders ----
 
 internal fun statusReply(code: Int): ByteArray =
-    FrameCodec.packFrames(byteArrayOf(code.toByte()), FrameMagic.PlainDownstream, CrcRule.Downstream).single()
+    FrameCodec.packFrames(
+        byteArrayOf(code.toByte()),
+        FrameMagic.PlainDownstream,
+        CrcRule.Downstream
+    ).single()
 
 internal fun reassemble(raws: List<ByteArray>): ByteArray {
     // 主机→假秤方向：上行 XMODEM CRC

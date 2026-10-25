@@ -1,13 +1,13 @@
 package xyz.crazyh.kscale3.protocol
 
+import xyz.crazyh.kscale3.protocol.crypto.aesCtrDecrypt
+import xyz.crazyh.kscale3.protocol.crypto.aesCtrEncrypt
+import xyz.crazyh.kscale3.protocol.crypto.secureRandomBytes
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
-import xyz.crazyh.kscale3.protocol.crypto.aesCtrDecrypt
-import xyz.crazyh.kscale3.protocol.crypto.aesCtrEncrypt
-import xyz.crazyh.kscale3.protocol.crypto.secureRandomBytes
 
 /** 黄金向量 1/2/8（PLAN「测试与验证」）。 */
 class ScaleCryptoTest {
@@ -94,6 +94,11 @@ class ScaleCryptoTest {
     fun decryptAesCtr_shorterThanIv_throws() {
         val key = ByteArray(16) { it.toByte() }
         assertFailsWith<IllegalArgumentException> { ScaleCrypto.decryptAesCtr(key, ByteArray(15)) }
-        assertFailsWith<IllegalArgumentException> { ScaleCrypto.decryptAesCtr(ByteArray(15), ByteArray(16)) }
+        assertFailsWith<IllegalArgumentException> {
+            ScaleCrypto.decryptAesCtr(
+                ByteArray(15),
+                ByteArray(16)
+            )
+        }
     }
 }

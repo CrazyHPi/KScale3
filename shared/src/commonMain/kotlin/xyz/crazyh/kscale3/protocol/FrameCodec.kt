@@ -143,7 +143,9 @@ class FrameReassembler(private val crcRule: CrcRule = CrcRule.Downstream) {
         val expected = raw.getU16Le(raw.size - 2)
         val body = raw.copyOfRange(0, raw.size - 2)
         val actual = when (crcRule) {
-            CrcRule.Upstream -> Crc16.compute(raw.copyOf().also { it[it.size - 2] = 0; it[it.size - 1] = 0 })
+            CrcRule.Upstream -> Crc16.compute(
+                raw.copyOf().also { it[it.size - 2] = 0; it[it.size - 1] = 0 })
+
             CrcRule.Downstream -> Crc16.computeDownstream(body)
         }
         if (actual != expected) return reject(RejectReason.BadCrc)

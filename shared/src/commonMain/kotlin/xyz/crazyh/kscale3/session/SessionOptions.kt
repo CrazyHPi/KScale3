@@ -1,12 +1,12 @@
 package xyz.crazyh.kscale3.session
 
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.toLocalDateTime
 import xyz.crazyh.kscale3.protocol.packets.TimeSyncPacket
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * 会话时序（PLAN「双模式状态机」超时参考值；测试可用 `runTest` 虚拟时间，无需改小）。

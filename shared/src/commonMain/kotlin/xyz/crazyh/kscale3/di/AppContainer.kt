@@ -41,6 +41,9 @@ class AppContainer(private val driverFactory: DriverFactory) {
         KableBlePeripheral(Peripheral(identifier))
 
     /** 每次称重/配对新建会话。 */
-    fun createScaleSession(peripheral: BlePeripheral, options: SessionOptions = SessionOptions()): ScaleSession =
+    fun createScaleSession(
+        peripheral: BlePeripheral,
+        options: SessionOptions = SessionOptions()
+    ): ScaleSession =
         ScaleSessionImpl(peripheral, options)
 }

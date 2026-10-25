@@ -1,11 +1,6 @@
 package xyz.crazyh.kscale3.data.repository
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
@@ -14,12 +9,23 @@ import xyz.crazyh.kscale3.domain.Measurement
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfileDraft
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** 三仓库 CRUD（JdbcSqliteDriver 内存库，SQLDelight 生成代码 + 映射端到端）。 */
 class SqlRepositoriesTest {
 
     private val t0 = Instant.fromEpochMilliseconds(1_700_000_000_000)
-    private val draft = UserProfileDraft(name = "tester", sex = Sex.Male, age = 30, heightCm = 175, goalWeightKg = 65.5)
+    private val draft = UserProfileDraft(
+        name = "tester",
+        sex = Sex.Male,
+        age = 30,
+        heightCm = 175,
+        goalWeightKg = 65.5
+    )
 
     private fun createDb(): KScale3Database {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -143,7 +149,13 @@ class SqlRepositoriesTest {
         assertEquals(72.5, users.byId(userId).first()!!.lastWeightKg)
 
         // 更新到最新一次测量
-        repo.insert(measurement(userId, weightKg = 71.0, measuredAt = Instant.fromEpochMilliseconds(t0.toEpochMilliseconds() + 1)))
+        repo.insert(
+            measurement(
+                userId,
+                weightKg = 71.0,
+                measuredAt = Instant.fromEpochMilliseconds(t0.toEpochMilliseconds() + 1)
+            )
+        )
         assertEquals(71.0, users.byId(userId).first()!!.lastWeightKg)
     }
 

@@ -63,7 +63,9 @@ fun App(container: AppContainer) {
                 if (showBottomBar) {
                     NavigationBar {
                         TABS.forEach { tab ->
-                            val selected = currentRouteClass?.contains(tab.route::class.simpleName ?: "@") == true
+                            val selected = currentRouteClass?.contains(
+                                tab.route::class.simpleName ?: "@"
+                            ) == true
                             NavigationBarItem(
                                 selected = selected,
                                 onClick = {

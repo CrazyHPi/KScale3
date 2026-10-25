@@ -68,7 +68,11 @@ class FrameCodecTest {
     @Test
     fun reassembler_roundTrip_threeFrames() {
         val r = FrameReassembler()
-        val frames = FrameCodec.packFrames(HexFixtures.PAYLOAD_38, FrameMagic.EncryptedDownstream, CrcRule.Downstream)
+        val frames = FrameCodec.packFrames(
+            HexFixtures.PAYLOAD_38,
+            FrameMagic.EncryptedDownstream,
+            CrcRule.Downstream
+        )
         assertIs<FeedResult.Incomplete>(r.feed(frames[0]))
         assertIs<FeedResult.Incomplete>(r.feed(frames[1]))
         val result = assertIs<FeedResult.Complete>(r.feed(frames[2]))
@@ -166,7 +170,15 @@ class FrameCodecTest {
     @Test
     fun reassembler_rejects_seqOutOfOrder() {
         val r = FrameReassembler()
-        assertIs<FeedResult.Incomplete>(r.feed(buildRawFrame(0xCD, 0x20, ByteArray(15)))) // total=3, index=0
+        assertIs<FeedResult.Incomplete>(
+            r.feed(
+                buildRawFrame(
+                    0xCD,
+                    0x20,
+                    ByteArray(15)
+                )
+            )
+        ) // total=3, index=0
         // index=2 但期望 1 → 跳号
         val result = assertIs<FeedResult.Rejected>(r.feed(buildRawFrame(0xCD, 0x22, ByteArray(15))))
         assertEquals(RejectReason.SeqOutOfOrder, result.reason)
@@ -201,7 +213,15 @@ class FrameCodecTest {
     fun reassembler_recovery_afterReject() {
         val r = FrameReassembler()
         // 半个组后坏包 → 状态清空
-        assertIs<FeedResult.Incomplete>(r.feed(buildRawFrame(0xCD, 0x10, HexFixtures.PAYLOAD_38.copyOfRange(0, 15))))
+        assertIs<FeedResult.Incomplete>(
+            r.feed(
+                buildRawFrame(
+                    0xCD,
+                    0x10,
+                    HexFixtures.PAYLOAD_38.copyOfRange(0, 15)
+                )
+            )
+        )
         assertIs<FeedResult.Rejected>(r.feed(ByteArray(4)))
         // 之后合法单帧可正常完成
         val result = assertIs<FeedResult.Complete>(r.feed(buildRawFrame(0xBD, 0x00, ByteArray(0))))

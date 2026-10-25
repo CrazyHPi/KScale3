@@ -1,6 +1,5 @@
 package xyz.crazyh.kscale3.session
 
-import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -17,6 +16,7 @@ import xyz.crazyh.kscale3.protocol.FrameMagic
 import xyz.crazyh.kscale3.protocol.FrameReassembler
 import xyz.crazyh.kscale3.protocol.RejectReason
 import xyz.crazyh.kscale3.protocol.toHex
+import kotlin.time.Duration
 
 /**
  * 会话帧 I/O：按特征 UUID 一队列（一次 notify 一完整帧，无粘包），坏包 → [SessionError.CrcError]。
@@ -63,7 +63,8 @@ internal class FrameIo(
         for (uuid in LOG_ONLY_UUIDS) {
             jobs += scope.launch {
                 try {
-                    peripheral.observe(uuid).collect { raw -> onLog?.invoke("[RX $uuid] ${raw.toHex()}") }
+                    peripheral.observe(uuid)
+                        .collect { raw -> onLog?.invoke("[RX $uuid] ${raw.toHex()}") }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -140,8 +141,8 @@ internal class FrameIo(
     private fun isDisconnectLike(e: Exception): Boolean {
         val msg = e.message?.lowercase().orEmpty()
         return "not connected" in msg ||
-            "disconnect" in msg ||
-            e::class.simpleName?.contains("NotConnected") == true
+                "disconnect" in msg ||
+                e::class.simpleName?.contains("NotConnected") == true
     }
 
     private companion object {

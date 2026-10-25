@@ -56,18 +56,24 @@ fun DeviceScanScreen(
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("设备扫描与配对", style = androidx.compose.material3.MaterialTheme.typography.headlineSmall)
+        Text(
+            "设备扫描与配对",
+            style = androidx.compose.material3.MaterialTheme.typography.headlineSmall
+        )
 
         // 已保存设备直接可用：扫描列表只含"本次扫描收到的广播"（冷启动时为空），
         // 不应让用户误以为配对丢失、必须重新扫。
         device?.let { saved ->
             Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("已保存设备", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+                    Text(
+                        "已保存设备",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleSmall
+                    )
                     Text(saved.name)
                     Text(
                         "MAC ${saved.mac}" +
-                            if (saved.bleId != saved.mac) " · BLE ${saved.bleId}" else "",
+                                if (saved.bleId != saved.mac) " · BLE ${saved.bleId}" else "",
                         style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                     )
                     OutlinedButton(onClick = onDone, modifier = Modifier.padding(top = 8.dp)) {
@@ -104,7 +110,11 @@ fun DeviceScanScreen(
                 onClick = { vm.startScan() },
                 enabled = !scanning && permission.granted,
             ) { Text(if (scanning) "扫描中…" else "开始扫描") }
-            OutlinedButton(onClick = { vm.stopScan() }, enabled = scanning, modifier = Modifier.padding(start = 8.dp)) {
+            OutlinedButton(
+                onClick = { vm.stopScan() },
+                enabled = scanning,
+                modifier = Modifier.padding(start = 8.dp)
+            ) {
                 Text("停止")
             }
         }
@@ -115,7 +125,7 @@ fun DeviceScanScreen(
         val adCount by vm.adCount.collectAsState()
         Text(
             "已收到 $adCount 条广播" +
-                if (adCount == 0 && scanning) "——若一直为 0：请上秤唤醒（秤待机时不广播），并确认系统蓝牙已开" else "",
+                    if (adCount == 0 && scanning) "——若一直为 0：请上秤唤醒（秤待机时不广播），并确认系统蓝牙已开" else "",
             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(vertical = 4.dp),
         )
@@ -135,7 +145,10 @@ fun DeviceScanScreen(
                     Row(Modifier.fillMaxWidth().padding(12.dp)) {
                         Column(Modifier.weight(1f)) {
                             Text(adv.name ?: "(未知设备)")
-                            Text(adv.identifier, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                            Text(
+                                adv.identifier,
+                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                            )
                         }
                         if (adv.isLikelyScale()) {
                             Text(

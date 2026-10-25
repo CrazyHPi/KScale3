@@ -1,10 +1,10 @@
 package xyz.crazyh.kscale3.data.db
 
+import kotlinx.datetime.Instant
+import xyz.crazyh.kscale3.domain.Sex
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlinx.datetime.Instant
-import xyz.crazyh.kscale3.domain.Sex
 
 /** 行类型 ↔ 领域标量映射往返。 */
 class DbMappingTest {

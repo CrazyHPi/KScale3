@@ -44,15 +44,15 @@ data class BiaMeasurement(
      */
     fun isPlausible(): Boolean =
         weightKg in 5.0..300.0 &&
-            fatPct in 1.0..80.0 &&
-            year in 2020..2099 &&
-            month in 1..12 &&
-            day in 1..31 &&
-            hour in 0..23 &&
-            minute in 0..59 &&
-            second in 0..59 &&
-            heartRate in 0..220 &&
-            feet.size == 6 && (hands.isEmpty() || hands.size == 6)
+                fatPct in 1.0..80.0 &&
+                year in 2020..2099 &&
+                month in 1..12 &&
+                day in 1..31 &&
+                hour in 0..23 &&
+                minute in 0..59 &&
+                second in 0..59 &&
+                heartRate in 0..220 &&
+                feet.size == 6 && (hands.isEmpty() || hands.size == 6)
 
     companion object {
         /** 完整包（含手部阻抗）。 */

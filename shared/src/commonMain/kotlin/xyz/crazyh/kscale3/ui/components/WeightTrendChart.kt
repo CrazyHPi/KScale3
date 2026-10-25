@@ -24,12 +24,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.ceil
-import kotlin.math.floor
-import kotlin.math.sqrt
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.sqrt
 
 /**
  * 体重趋势折线图（自绘 Canvas；dataviz 规范落地）：
@@ -52,7 +52,8 @@ fun WeightTrendChart(
     val textMeasurer = rememberTextMeasurer()
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
-    val valueStyle = TextStyle(color = textColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+    val valueStyle =
+        TextStyle(color = textColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
     val axisStyle = TextStyle(color = mutedColor, fontSize = 10.sp)
 
     Canvas(
@@ -69,7 +70,8 @@ fun WeightTrendChart(
                     val bottomPad = 24.dp.toPx()
                     val plotW = size.width - leftPad - rightPad
                     val xs = points.map { p -> leftPad + fractionX(points, p) * plotW }
-                    val nearest = xs.indices.minByOrNull { i -> sqrt((xs[i] - tap.x) * (xs[i] - tap.x)) }
+                    val nearest =
+                        xs.indices.minByOrNull { i -> sqrt((xs[i] - tap.x) * (xs[i] - tap.x)) }
                     if (nearest != null && kotlin.math.abs(xs[nearest] - tap.x) <= 24.dp.toPx()) {
                         selectedIndex = if (selectedIndex == nearest) null else nearest
                     }
@@ -86,25 +88,36 @@ fun WeightTrendChart(
 
         val weights = points.map { it.weightKg }
         val (lo, hi) = niceBounds(weights.min(), weights.max())
-        fun yOf(weight: Double): Float = (topPad + plotH * (1.0 - (weight - lo) / (hi - lo))).toFloat()
+        fun yOf(weight: Double): Float =
+            (topPad + plotH * (1.0 - (weight - lo) / (hi - lo))).toFloat()
 
         // 网格 + y 轴刻度（干净数字，3 档）
         val ticks = listOf(lo, (lo + hi) / 2, hi)
         for (t in ticks) {
             val y = yOf(t)
-            drawLine(gridColor, Offset(leftPad, y), Offset(leftPad + plotW, y), strokeWidth = 1.dp.toPx())
+            drawLine(
+                gridColor,
+                Offset(leftPad, y),
+                Offset(leftPad + plotW, y),
+                strokeWidth = 1.dp.toPx()
+            )
             val label = t.rounded(1)
             val measured = textMeasurer.measure(label, axisStyle)
             drawText(
                 measured,
-                topLeft = Offset(leftPad - measured.size.width - 6.dp.toPx(), y - measured.size.height / 2f),
+                topLeft = Offset(
+                    leftPad - measured.size.width - 6.dp.toPx(),
+                    y - measured.size.height / 2f
+                ),
             )
         }
 
         // x 轴：首/末日期
         val timeFmt: (Instant) -> String = { instant ->
             val dt = instant.toLocalDateTime(TimeZone.currentSystemDefault())
-            "${dt.monthNumber.toString().padStart(2, '0')}-${dt.dayOfMonth.toString().padStart(2, '0')}"
+            "${dt.monthNumber.toString().padStart(2, '0')}-${
+                dt.dayOfMonth.toString().padStart(2, '0')
+            }"
         }
         for (p in listOf(points.first(), points.last()).distinct()) {
             val label = timeFmt(p.at)
@@ -121,7 +134,10 @@ fun WeightTrendChart(
 
         // 面积洗染（系列色 ~10%）
         val area = Path().apply {
-            moveTo(leftPad + fractionX(points, points.first()) * plotW, yOf(points.first().weightKg))
+            moveTo(
+                leftPad + fractionX(points, points.first()) * plotW,
+                yOf(points.first().weightKg)
+            )
             for (p in points) lineTo(leftPad + fractionX(points, p) * plotW, yOf(p.weightKg))
             lineTo(leftPad + fractionX(points, points.last()) * plotW, topPad + plotH)
             lineTo(leftPad + fractionX(points, points.first()) * plotW, topPad + plotH)
@@ -131,10 +147,17 @@ fun WeightTrendChart(
 
         // 折线 2px 圆角
         val line = Path().apply {
-            moveTo(leftPad + fractionX(points, points.first()) * plotW, yOf(points.first().weightKg))
+            moveTo(
+                leftPad + fractionX(points, points.first()) * plotW,
+                yOf(points.first().weightKg)
+            )
             for (p in points) lineTo(leftPad + fractionX(points, p) * plotW, yOf(p.weightKg))
         }
-        drawPath(line, color = lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawPath(
+            line,
+            color = lineColor,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
 
         // 选择性直标：最低/最高/最新（端值），文字用文本色
         val minIdx = weights.indexOf(weights.min())
@@ -147,7 +170,8 @@ fun WeightTrendChart(
             markerDot(this, Offset(x, y), lineColor, surfaceColor)
             val label = p.weightKg.rounded(1)
             val measured = textMeasurer.measure(label, valueStyle)
-            val labelY = if (idx == maxIdx) y - measured.size.height - 8.dp.toPx() else y + 8.dp.toPx()
+            val labelY =
+                if (idx == maxIdx) y - measured.size.height - 8.dp.toPx() else y + 8.dp.toPx()
             drawText(
                 measured,
                 topLeft = Offset(
