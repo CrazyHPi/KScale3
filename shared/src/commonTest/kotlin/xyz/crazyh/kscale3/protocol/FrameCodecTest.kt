@@ -5,6 +5,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /** 黄金向量 3/4 + 分帧边界 + 重组器负例全表（PLAN「测试与验证」）。 */
 class FrameCodecTest {
@@ -67,7 +68,7 @@ class FrameCodecTest {
     @Test
     fun reassembler_roundTrip_threeFrames() {
         val r = FrameReassembler()
-        val frames = FrameCodec.packFrames(HexFixtures.PAYLOAD_38, FrameMagic.EncryptedDownstream)
+        val frames = FrameCodec.packFrames(HexFixtures.PAYLOAD_38, FrameMagic.EncryptedDownstream, CrcRule.Downstream)
         assertIs<FeedResult.Incomplete>(r.feed(frames[0]))
         assertIs<FeedResult.Incomplete>(r.feed(frames[1]))
         val result = assertIs<FeedResult.Complete>(r.feed(frames[2]))
@@ -77,10 +78,29 @@ class FrameCodecTest {
 
     @Test
     fun reassembler_singleFrame_immediatelyComplete() {
-        val r = FrameReassembler()
+        // db0300c140 是上行规则帧 → 用 Upstream 重组器（Fake 秤收集主机帧的用法）
+        val r = FrameReassembler(CrcRule.Upstream)
         val result = assertIs<FeedResult.Complete>(r.feed("db0300c140".hexToBytes()))
         assertContentEquals(ByteArray(0), result.frame.payload)
         assertEquals(FrameMagic.PlainUpstream, result.frame.magic)
+    }
+
+    @Test
+    fun crc16_realDownstreamCapture_accepted_onlyByDownstreamRule() {
+        // 2026-09-24 真机抓包：randA 组首帧（total=2/index=0）。下行 = CRC-16/MODBUS over CRC 前字节。
+        // （真机"通信校验失败"根因回归：上行规则校验此帧必然 BadCrc）
+        val frame = "bd1210362c4d3400bd54560056cbc900ade61565".hexToBytes()
+        val stored = frame.getU16Le(frame.size - 2)
+        assertEquals(stored, Crc16.computeDownstream(frame.copyOfRange(0, frame.size - 2)))
+
+        val withZeroCrc = frame.copyOf().also { it[it.size - 2] = 0; it[it.size - 1] = 0 }
+        assertTrue(Crc16.compute(withZeroCrc) != stored) // 上行 XMODEM 不匹配
+
+        assertIs<FeedResult.Incomplete>(FrameReassembler().feed(frame))
+
+        val frame2 = "bd12103c531635003ab963007655ab0035aef87a".hexToBytes()
+        val stored2 = frame2.getU16Le(frame2.size - 2)
+        assertEquals(stored2, Crc16.computeDownstream(frame2.copyOfRange(0, frame2.size - 2)))
     }
 
     // ---- 重组（负例全表）----
@@ -88,7 +108,7 @@ class FrameCodecTest {
     @Test
     fun reassembler_rejects_badCrc() {
         val r = FrameReassembler()
-        val frame = "db0300c140".hexToBytes()
+        val frame = buildRawFrame(0xDB, 0x00, ByteArray(0))
         frame[4] = (frame[4].toInt() xor 0x01).toByte() // 翻转 CRC 低位
         val result = assertIs<FeedResult.Rejected>(r.feed(frame))
         assertEquals(RejectReason.BadCrc, result.reason)
@@ -184,18 +204,18 @@ class FrameCodecTest {
         assertIs<FeedResult.Incomplete>(r.feed(buildRawFrame(0xCD, 0x10, HexFixtures.PAYLOAD_38.copyOfRange(0, 15))))
         assertIs<FeedResult.Rejected>(r.feed(ByteArray(4)))
         // 之后合法单帧可正常完成
-        val result = assertIs<FeedResult.Complete>(r.feed("db0300c140".hexToBytes()))
+        val result = assertIs<FeedResult.Complete>(r.feed(buildRawFrame(0xBD, 0x00, ByteArray(0))))
         assertContentEquals(ByteArray(0), result.frame.payload)
     }
 
-    /** 手工构帧（CRC 占位 00 00 计算后写回），用于负例注入。 */
+    /** 手工构帧（下行 MODBUS CRC 规则），用于负例注入。 */
     private fun buildRawFrame(magic: Int, seq: Int, payload: ByteArray): ByteArray {
         val frame = ByteArray(payload.size + 5)
         frame[0] = magic.toByte()
         frame[1] = (payload.size + 3).toByte()
         frame[2] = seq.toByte()
         payload.copyInto(frame, 3)
-        val crc = Crc16.compute(frame)
+        val crc = Crc16.computeDownstream(frame.copyOfRange(0, frame.size - 2))
         frame[frame.size - 2] = (crc and 0xFF).toByte()
         frame[frame.size - 1] = ((crc ushr 8) and 0xFF).toByte()
         return frame

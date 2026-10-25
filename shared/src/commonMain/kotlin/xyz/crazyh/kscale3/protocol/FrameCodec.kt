@@ -5,7 +5,8 @@ package xyz.crazyh.kscale3.protocol
  * ```
  * | Magic(1) | Length(1)=payload_len+3 | Seq(1)=((total-1)<<4)|index | Payload 0..15B | CRC-16 LE(2) |
  * ```
- * CRC 规则见 [Crc16]（⚠️ 覆盖含 CRC 字段预置 `00 00` 的完整帧，结果小端写回）。
+ * ⚠️ CRC **按方向分两套规则**（见 [Crc16]）：上行 [CrcRule.Upstream]（XMODEM，含 0000 占位整帧）；
+ * 下行 [CrcRule.Downstream]（MODBUS，仅 CRC 前字节）——真机实测，勿混用。
  */
 object FrameCodec {
 
@@ -14,9 +15,14 @@ object FrameCodec {
      * 边界：空载荷=1 帧；15B=1 帧；16B=2 帧(0x10/0x11)；240B=16 帧(0xF0..0xFF)；>240B 拒绝
      *（Seq 的 total-1 仅 4 bit，超限拒绝而非静默截断 nibble）。
      *
-     * 黄金向量：空载荷 0xDB → `db0300c140`；载荷 `01` 0xDB → `db04000120d9`。
+     * [crcRule] 默认 [CrcRule.Upstream]（主机→秤）；[CrcRule.Downstream] 供测试/Fake 秤造下行帧。
+     * 黄金向量（Upstream）：空载荷 0xDB → `db0300c140`；载荷 `01` 0xDB → `db04000120d9`。
      */
-    fun packFrames(payload: ByteArray, magic: FrameMagic): List<ByteArray> {
+    fun packFrames(
+        payload: ByteArray,
+        magic: FrameMagic,
+        crcRule: CrcRule = CrcRule.Upstream,
+    ): List<ByteArray> {
         require(payload.size <= ProtocolConstants.MAX_PAYLOAD_TOTAL) {
             "payload ${payload.size}B exceeds ${ProtocolConstants.MAX_PAYLOAD_TOTAL}B (15x16, seq nibble limit)"
         }
@@ -31,13 +37,26 @@ object FrameCodec {
             frame[1] = (chunk.size + 3).toByte()
             frame[2] = ((((total - 1) and 0x0F) shl 4) or (i and 0x0F)).toByte()
             chunk.copyInto(frame, 3)
-            // 尾两字节保持 00 00（CRC 占位——Crc16 覆盖范围含此占位），计算后小端写回
-            val crc = Crc16.compute(frame)
+            val crc = when (crcRule) {
+                // 尾两字节保持 00 00（CRC 占位——XMODEM 覆盖范围含此占位）
+                CrcRule.Upstream -> Crc16.compute(frame)
+                // MODBUS 仅覆盖 CRC 前的字节
+                CrcRule.Downstream -> Crc16.computeDownstream(frame.copyOfRange(0, frame.size - 2))
+            }
             frame[frame.size - 2] = (crc and 0xFF).toByte()
             frame[frame.size - 1] = ((crc ushr 8) and 0xFF).toByte()
             frame
         }
     }
+}
+
+/** CRC 规则按帧方向区分（[Crc16] KDoc 有真实字节证据）。 */
+enum class CrcRule {
+    /** 主机→秤打包：XMODEM over 带 `00 00` 占位的整帧。 */
+    Upstream,
+
+    /** 秤→主机校验/测试打包：MODBUS over CRC 前字节。 */
+    Downstream,
 }
 
 /** [FrameReassembler.feed] 结果。 */
@@ -92,8 +111,11 @@ enum class RejectReason {
  * 与参考实现（scale3.py `FrameReassembler`）的差异：①校验 CRC/长度/序号（Python 全不查）；
  * ②组 magic 取**首帧**（Python 取末帧；真流量全组同 magic，无行为差）；
  * ③坏包返回 [FeedResult.Rejected] 并清空重组状态（Python 静默返回 null）。
+ *
+ * CRC 校验默认 [CrcRule.Downstream]（真机下行规则；⚠️ 勿改为上行规则——会拒收一切回包）。
+ * 测试重组**模拟上行**流量（Fake 秤收集主机帧）时传 [CrcRule.Upstream]。
  */
-class FrameReassembler {
+class FrameReassembler(private val crcRule: CrcRule = CrcRule.Downstream) {
     private var groupMagic: FrameMagic? = null
     private var groupTotal: Int = 0
     private var nextIndex: Int = 0
@@ -117,12 +139,14 @@ class FrameReassembler {
         if (payloadLen > ProtocolConstants.MAX_PAYLOAD_PER_FRAME) return reject(RejectReason.PayloadOverLimit)
         if (raw.size != lengthField + 2) return reject(RejectReason.LengthMismatch)
 
-        // CRC 校验：末两字节置 0 重算，与小端存留值比对（⚠️ 见 Crc16）
+        // CRC 校验（规则按方向，见 Crc16/CrcRule）：与小端存留值比对
         val expected = raw.getU16Le(raw.size - 2)
-        val body = raw.copyOf()
-        body[body.size - 2] = 0
-        body[body.size - 1] = 0
-        if (Crc16.compute(body) != expected) return reject(RejectReason.BadCrc)
+        val body = raw.copyOfRange(0, raw.size - 2)
+        val actual = when (crcRule) {
+            CrcRule.Upstream -> Crc16.compute(raw.copyOf().also { it[it.size - 2] = 0; it[it.size - 1] = 0 })
+            CrcRule.Downstream -> Crc16.computeDownstream(body)
+        }
+        if (actual != expected) return reject(RejectReason.BadCrc)
 
         val seq = raw[2].toInt() and 0xFF
         val index = seq and 0x0F

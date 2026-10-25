@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.isoDayNumber
 import xyz.crazyh.kscale3.ble.BlePeripheral
 import xyz.crazyh.kscale3.ble.GattUuids
 import xyz.crazyh.kscale3.domain.BodyCompositionEstimator
@@ -120,62 +122,75 @@ class ScaleSessionImpl(
             throw SessionException(SessionError.MacInvalid, cause = e)
         }
 
-        return coroutineScope {
-            activeJob = coroutineContext[Job]
-            _state.value = SessionState.Connecting
-            try {
-                peripheral.connect()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw SessionException(SessionError.Disconnected, cause = e)
-            }
+        // Reaching this point after measurementFlow() means 0x31 Code 0 confirmed the profile.
+        // Mode 1 failures after that do not undo the flash registration (see pair() KDoc).
+        var profileConfirmed = false
 
-            // mid-session disconnect watcher (true -> false counts as disconnect)
-            val watcher = launch {
-                peripheral.isConnected.dropWhile { !it }.first { !it }
-                throw SessionException(SessionError.Disconnected)
-            }
-            val io = FrameIo(peripheral, this, options.onLog)
-            val collectors = io.start()
-
-            try {
-                delay(options.timing.settle)
-
-                val workKey = handshake(rootKey, io)
-                val profileWeightDg = when (mode) {
-                    is Mode.Pairing -> bindingPreamble(workKey, mode.huid, io)
-                    is Mode.Routine -> mode.fallbackWeightDg
+        return try {
+            coroutineScope {
+                activeJob = coroutineContext[Job]
+                _state.value = SessionState.Connecting
+                try {
+                    peripheral.connect()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    throw SessionException(SessionError.Disconnected, cause = e)
                 }
 
-                // hard for both modes up to 0x31 Code 0 (registration/ownership proven)
-                measurementFlow(workKey, mode, profileWeightDg, io)
+                // mid-session disconnect watcher (true -> false counts as disconnect)
+                val watcher = launch {
+                    peripheral.isConnected.dropWhile { !it }.first { !it }
+                    throw SessionException(SessionError.Disconnected)
+                }
+                val io = FrameIo(peripheral, this, options.onLog)
+                val collectors = io.start()
 
-                // BIA tail: Mode 1 failures do not undo the flash registration
-                val result = try {
-                    biaTail(workKey, mode, io)
-                } catch (e: SessionException) {
-                    if (mode is Mode.Pairing) {
-                        options.onLog?.invoke("pairing BIA tail failed (${e.error}); registration kept")
-                        null
-                    } else {
-                        throw e
+                try {
+                    delay(options.timing.settle)
+
+                    val workKey = handshake(rootKey, io)
+                    val profileWeightDg = when (mode) {
+                        is Mode.Pairing -> bindingPreamble(workKey, mode.huid, io)
+                        is Mode.Routine -> mode.fallbackWeightDg
+                    }
+
+                    // hard for both modes up to 0x31 Code 0 (registration/ownership proven)
+                    measurementFlow(workKey, mode, profileWeightDg, io) { profileConfirmed = true }
+
+                    // BIA tail: Mode 1 failures do not undo the flash registration
+                    val result = try {
+                        biaTail(workKey, mode, io)
+                    } catch (e: SessionException) {
+                        if (mode is Mode.Pairing) {
+                            options.onLog?.invoke("pairing BIA tail failed (${e.error}); registration kept")
+                            null
+                        } else {
+                            throw e
+                        }
+                    }
+                    SessionOutput(result)
+                } finally {
+                    // stop background children BEFORE disconnecting: otherwise the watcher
+                    // sees the teardown disconnect and poisons a successful run with Disconnected
+                    watcher.cancel()
+                    collectors.forEach { it.cancel() }
+                    activeJob = null
+                    withContext(NonCancellable) {
+                        runCatching { peripheral.disconnect() }
                     }
                 }
-                SessionOutput(result)
-            } catch (e: SessionException) {
-                _state.value = SessionState.Failed(e.error)
-                throw e
-            } finally {
-                // stop background children BEFORE disconnecting: otherwise the watcher
-                // sees the teardown disconnect and poisons a successful run with Disconnected
-                watcher.cancel()
-                collectors.forEach { it.cancel() }
-                activeJob = null
-                withContext(NonCancellable) {
-                    runCatching { peripheral.disconnect() }
-                }
             }
+        } catch (e: SessionException) {
+            // A child coroutine failure (the disconnect watcher) bypasses the inner try/catch:
+            // without this outer catch the state stays at AwaitingMeasurement forever and the
+            // UI dialog cannot be dismissed.
+            if (mode is Mode.Pairing && profileConfirmed && e.error == SessionError.Disconnected) {
+                options.onLog?.invoke("pairing: disconnected after Code 0; registration kept")
+                return SessionOutput(null)
+            }
+            _state.value = SessionState.Failed(e.error)
+            throw e
         }
     }
 
@@ -248,18 +263,40 @@ class ScaleSessionImpl(
         }
         io.writeFrames(GattUuids.HUID_TARE, ScaleCrypto.encryptAesCtr(workKey, huid30), FrameMagic.EncryptedUpstream)
 
-        // tare weigh-in reply: [status u8][tare u16le /100kg][pad] (25s hard timeout)
+        // Tare weigh-in reply: [status u8][tare u16le /100kg][pad].
+        // Real-device finding (2026-10-25, 3 consecutive attempts): after the HUID write this unit
+        // replies ONCE with a 15B message: status=1, weight ~57.5kg (varies 57.50/57.60), plus a
+        // second u16 that varies ~5512..5570 (likely raw impedance). No status=0 message ever
+        // arrives within the 25s window (nor after), so requiring status=0 always times out.
+        // Interpretation: status here is a "weigh-in captured" flag, not 0x31's Code 1 meaning
+        // ("no validation weigh-in"); accept status 0/1 as long as the weight is plausible.
+        // (Earlier 2026-09-24 note assumed a separate status=0 tare would follow — not observed.)
         _state.value = SessionState.AwaitingTare
-        val frame = io.await(GattUuids.HUID_TARE, "tare", timing.tare)
-        val plain = decryptBody(workKey, frame, "tare")
-        val tare = try {
-            TareResponse.decode(plain)
-        } catch (e: IllegalArgumentException) {
-            throw SessionException(SessionError.UnexpectedReply("tare"), cause = e)
+        val tareDg = withTimeoutOrNull(timing.tare) {
+            var captured: Int? = null
+            while (captured == null) {
+                val frame = io.receive(GattUuids.HUID_TARE, "tare")
+                val plain = decryptBody(workKey, frame, "tare")
+                val tare = try {
+                    TareResponse.decode(plain)
+                } catch (e: IllegalArgumentException) {
+                    throw SessionException(SessionError.UnexpectedReply("tare"), cause = e)
+                }
+                options.onLog?.invoke(
+                    "[0x2D plain ${plain.size}B] ${plain.toHex()} -> status=${tare.status} " +
+                        "weight=${tare.weightKg}kg",
+                )
+                when {
+                    (tare.status == 0 || tare.status == 1) && tare.weightKg in 1.0..300.0 ->
+                        captured = (tare.weightKg * 100).roundToInt().coerceIn(0, 0xFFFF)
+
+                    tare.status == 0 || tare.status == 1 -> Unit // no weigh-in yet: keep waiting
+                    else -> throw SessionException(SessionError.UnexpectedReply("tare", tare.status))
+                }
+            }
+            captured
         }
-        // diff note 7 (stricter): require status=0 to end the wait (Python ignores status)
-        if (tare.status != 0) throw SessionException(SessionError.UnexpectedReply("tare", tare.status))
-        return (tare.weightKg * 100).roundToInt().coerceIn(0, 0xFFFF)
+        return tareDg ?: throw SessionException(SessionError.Timeout("tare"))
     }
 
     // ---- shared measurement stage ----
@@ -270,6 +307,7 @@ class ScaleSessionImpl(
         mode: Mode,
         profileWeightDg: Int,
         io: FrameIo,
+        onProfileConfirmed: () -> Unit = {},
     ) {
         val timing = options.timing
 
@@ -302,9 +340,10 @@ class ScaleSessionImpl(
             FrameMagic.EncryptedUpstream,
         )
         val code = statusCode(io.await(GattUuids.USER_PROFILE, "profile", timing.profileFirst), "profile")
+        options.onLog?.invoke("[0x31 type=0 weightDg=$profileWeightDg -> code=$code]")
         _state.value = SessionState.ProfileResponded(code)
         when (code) {
-            0 -> Unit
+            0 -> onProfileConfirmed()
             1 -> throw SessionException(SessionError.MissingTare)
             2 -> throw SessionException(SessionError.UserNotRecognised)
             else -> throw SessionException(SessionError.UnexpectedReply("profile", code))
@@ -401,14 +440,22 @@ class ScaleSessionImpl(
                                 BiaMeasurement.decode(plain)
                             } catch (e: IllegalArgumentException) {
                                 sawImplausible = true
-                                options.onLog?.invoke("BIA payload ${plain.size}B undecodable (mac wrong?)")
+                                options.onLog?.invoke(
+                                    "BIA payload ${plain.size}B undecodable (mac wrong?): ${plain.toHex()}",
+                                )
                                 continue
                             }
                             if (options.rejectImplausibleBia && !bia.isPlausible()) {
                                 sawImplausible = true
-                                options.onLog?.invoke("BIA implausible frame filtered (mac wrong?)")
+                                options.onLog?.invoke(
+                                    "BIA implausible frame filtered (mac wrong?): ${plain.toHex()}",
+                                )
                                 continue
                             }
+                            options.onLog?.invoke(
+                                "BIA decoded: weight=${bia.weightKg}kg fat=${bia.fatPct}% " +
+                                    "hr=${bia.heartRate} feet=${bia.feet} hands=${bia.hands.size}",
+                            )
                             if (options.acceptFirstBiaFrame) {
                                 done.complete(bia)
                                 break
@@ -500,6 +547,10 @@ class ScaleSessionImpl(
     /** Device timestamp text: `Y-m-d-h-m-s+dow` (Measurement.deviceTs). */
     private fun deviceTsOf(bia: BiaMeasurement): String {
         fun p2(v: Int) = v.toString().padStart(2, '0')
-        return "${bia.year}-${p2(bia.month)}-${p2(bia.day)}-${p2(bia.hour)}-${p2(bia.minute)}-${p2(bia.second)}+${bia.dayOfWeek}"
+        // 26B 真机包不带星期（dayOfWeek=0）——按日期推算；38B 布局直接用包内值
+        val dow = bia.dayOfWeek.takeIf { it in 1..7 }
+            ?: runCatching { LocalDate(bia.year, bia.month, bia.day).dayOfWeek.isoDayNumber }
+                .getOrDefault(0)
+        return "${bia.year}-${p2(bia.month)}-${p2(bia.day)}-${p2(bia.hour)}-${p2(bia.minute)}-${p2(bia.second)}+$dow"
     }
 }

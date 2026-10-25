@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,9 +22,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import xyz.crazyh.kscale3.isIosPlatform
+import xyz.crazyh.kscale3.platform.rememberBluetoothPermission
 import xyz.crazyh.kscale3.protocol.isValidMacAddress
 import xyz.crazyh.kscale3.ui.components.SectionTitle
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
+import xyz.crazyh.kscale3.ui.vm.isLikelyScale
 
 /**
  * 设备扫描/配对屏（PLAN UI-1）：
@@ -38,15 +41,31 @@ fun DeviceScanScreen(
 ) {
     val scanning by vm.scanning.collectAsState()
     val results by vm.scanResults.collectAsState()
+    val scanError by vm.scanError.collectAsState()
     val device by vm.device.collectAsState()
     val isIos = remember { isIosPlatform() }
+    val permission = rememberBluetoothPermission()
 
     var macInput by remember { mutableStateOf("") }
     var selectedId by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // 进入页面即申请蓝牙权限（Android 运行时；iOS 无操作）
+    LaunchedEffect(Unit) {
+        if (!permission.granted) permission.request()
+    }
+
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("设备扫描与配对", style = androidx.compose.material3.MaterialTheme.typography.headlineSmall)
+
+        if (!permission.granted) {
+            Text(
+                "需要蓝牙权限才能扫描与连接——请点「授权」并在系统弹窗中允许。",
+                color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+            Button(onClick = { permission.request() }) { Text("授权蓝牙权限") }
+        }
 
         SectionTitle("1. MAC 地址（RootKey 密钥输入）")
         OutlinedTextField(
@@ -62,11 +81,25 @@ fun DeviceScanScreen(
 
         SectionTitle("2. 选择设备")
         Row {
-            Button(onClick = { vm.startScan() }, enabled = !scanning) { Text(if (scanning) "扫描中…" else "开始扫描") }
+            Button(
+                onClick = { vm.startScan() },
+                enabled = !scanning && permission.granted,
+            ) { Text(if (scanning) "扫描中…" else "开始扫描") }
             OutlinedButton(onClick = { vm.stopScan() }, enabled = scanning, modifier = Modifier.padding(start = 8.dp)) {
                 Text("停止")
             }
         }
+        scanError?.let {
+            Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error)
+        }
+
+        val adCount by vm.adCount.collectAsState()
+        Text(
+            "已收到 $adCount 条广播" +
+                if (adCount == 0 && scanning) "——若一直为 0：请上秤唤醒（秤待机时不广播），并确认系统蓝牙已开" else "",
+            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(vertical = 4.dp),
+        )
 
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
             items(results, key = { it.identifier }) { adv ->
@@ -84,6 +117,14 @@ fun DeviceScanScreen(
                         Column(Modifier.weight(1f)) {
                             Text(adv.name ?: "(未知设备)")
                             Text(adv.identifier, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                        }
+                        if (adv.isLikelyScale()) {
+                            Text(
+                                "疑似秤",
+                                style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
                         }
                         Text("${adv.rssi} dBm")
                     }
@@ -103,7 +144,7 @@ fun DeviceScanScreen(
                 )
                 if (ok) onDone() else error = "MAC 格式无效（应为 XX:XX:XX:XX:XX:XX）"
             },
-            enabled = selected != null || macInput.isValidMacAddress(),
+            enabled = permission.granted && (selected != null || macInput.isValidMacAddress()),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
             Text(if (device != null) "保存并更新设备" else "保存设备并进入主界面")

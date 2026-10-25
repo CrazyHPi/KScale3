@@ -1,14 +1,22 @@
 package xyz.crazyh.kscale3.protocol
 
 /**
- * CRC-16/CCITT 查表法（poly 0x1021、init 0、查表 MSB-first、256 项表：TECH.md §3.1 = scale3.py L82）。
- * 参数集等价于 CRC-16/XMODEM。
+ * 帧 CRC——**收发方向用两套不同规则**（2026-09-24 真机字节实测，两帧下行样本唯一命中穷举）：
  *
- * ⚠️ 覆盖范围（TECH.md 写错，以实测线上字节为准）：
- * 对「CRC 字段预置 `00 00` 的完整帧」计算，即 `CRC(magic‖len‖seq‖payload‖0000)`，
- * 结果**小端**写回最后两字节。收端校验用同一规则重算比对。
- * 反例：空载荷 0xDB 帧按 TECH.md 字面实现会算出 `db030036c0`，真实线上是 `db0300c140`。
+ * - **上行（主机→秤）打包** [compute]：CRC-16/XMODEM（poly 0x1021、init 0、查表 MSB-first，
+ *   256 项表：TECH.md §3.1 = scale3.py L82）。覆盖「CRC 字段预置 `00 00` 的完整帧」，
+ *   即 `CRC(magic‖len‖seq‖payload‖0000)`，结果**小端**写回。
+ *   黄金向量：`db0300c140`/`db04000120d9`（与线上一致，Python `build_framed_chunks` 行为）。
+ *
+ * - **下行（秤→主机）校验** [computeDownstream]：**CRC-16/MODBUS**（poly 0x8005 反射 0xA001、
+ *   init 0xFFFF、refin/refout），仅覆盖 **CRC 前的字节**（TECH.md "over all preceding frame bytes"
+ *   对下行是对的），**小端**比对。
+ *   真实样本：`bd1210362c4d3400bd54560056cbc900ade61565`（randA 组首帧）等。
+ *
+ * ⚠️ Python 参考实现收包**从不校验 CRC**，故此不对称从未暴露；勿用上行规则校验下行
+ * （会把每一条回包判 BadCrc——真机表现为"通信校验失败"）。
  */
+
 object Crc16 {
 
     /** TECH.md §3.1 查表（256 项，MSB-first）。 */
@@ -31,7 +39,7 @@ object Crc16 {
         61215, 65342, 53085, 57212, 44955, 49082, 36825, 40952, 28183, 32310, 20053, 24180, 11923, 16050, 3793, 7920,
     )
 
-    /** 计算 [data] 的 CRC-16/CCITT（16 位无符号值）。 */
+    /** 上行打包用：[data] 的 CRC-16/XMODEM（16 位无符号值），[data] 须含 `00 00` CRC 占位。 */
     fun compute(data: ByteArray): Int {
         var crc = 0
         for (b in data) {
@@ -39,5 +47,20 @@ object Crc16 {
             crc = ((crc shl 8) xor TABLE[index]) and 0xFFFF
         }
         return crc
+    }
+
+    /**
+     * 下行校验用：[data]（= CRC 前的全部帧字节）的 **CRC-16/MODBUS**（16 位无符号值）。
+     * 反射算法：poly 0xA001、init 0xFFFF、逐位 LSB-first；结果与帧尾两字节**小端**比对。
+     */
+    fun computeDownstream(data: ByteArray): Int {
+        var crc = 0xFFFF
+        for (b in data) {
+            crc = crc xor (b.toInt() and 0xFF)
+            repeat(8) {
+                crc = if (crc and 1 != 0) (crc ushr 1) xor 0xA001 else crc ushr 1
+            }
+        }
+        return crc and 0xFFFF
     }
 }

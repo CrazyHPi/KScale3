@@ -12,6 +12,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -86,7 +90,9 @@ fun SessionProgressDialog(
         SessionState.Idle, is SessionState.Done, is SessionState.Paired, is SessionState.Failed -> false
         else -> true
     }
-    if (!visible) return
+    // 「隐藏」只收起对话框、不打断会话；进入新的进行中状态时自动重新出现
+    var dismissed by remember(state) { mutableStateOf(false) }
+    if (!visible || dismissed) return
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text("称重/注册") },
@@ -100,7 +106,12 @@ fun SessionProgressDialog(
             TextButton(onClick = onCancel) { Text("取消") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("隐藏") }
+            TextButton(
+                onClick = {
+                    dismissed = true
+                    onDismiss()
+                },
+            ) { Text("隐藏") }
         },
     )
 }

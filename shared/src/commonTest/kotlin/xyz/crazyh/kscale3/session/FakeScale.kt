@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import xyz.crazyh.kscale3.ble.BlePeripheral
 import xyz.crazyh.kscale3.ble.GattUuids
+import xyz.crazyh.kscale3.protocol.CrcRule
 import xyz.crazyh.kscale3.protocol.FeedResult
 import xyz.crazyh.kscale3.protocol.FrameCodec
 import xyz.crazyh.kscale3.protocol.FrameMagic
@@ -146,7 +147,8 @@ internal class TestScale(
     }
 
     fun sendFrames(uuid: String, payload: ByteArray, magic: FrameMagic) {
-        FrameCodec.packFrames(payload, magic).forEach { peripheral.notify(uuid, it) }
+        // 假秤=下行方向：真机实测下行 CRC=MODBUS（CrcRule.Downstream）
+        FrameCodec.packFrames(payload, magic, CrcRule.Downstream).forEach { peripheral.notify(uuid, it) }
     }
 
     fun sendStatus(uuid: String, code: Int) {
@@ -190,10 +192,11 @@ internal class TestScale(
 // ---- frame / payload builders ----
 
 internal fun statusReply(code: Int): ByteArray =
-    FrameCodec.packFrames(byteArrayOf(code.toByte()), FrameMagic.PlainDownstream).single()
+    FrameCodec.packFrames(byteArrayOf(code.toByte()), FrameMagic.PlainDownstream, CrcRule.Downstream).single()
 
 internal fun reassemble(raws: List<ByteArray>): ByteArray {
-    val reassembler = FrameReassembler()
+    // 主机→假秤方向：上行 XMODEM CRC
+    val reassembler = FrameReassembler(CrcRule.Upstream)
     var out: ByteArray? = null
     for (raw in raws) {
         when (val result = reassembler.feed(raw)) {

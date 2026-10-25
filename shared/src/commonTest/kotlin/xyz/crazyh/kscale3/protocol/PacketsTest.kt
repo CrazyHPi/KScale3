@@ -3,6 +3,7 @@ package xyz.crazyh.kscale3.protocol
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import xyz.crazyh.kscale3.protocol.packets.BiaMeasurement
 import xyz.crazyh.kscale3.protocol.packets.TareResponse
 import xyz.crazyh.kscale3.protocol.packets.TimeSyncPacket
@@ -99,8 +100,31 @@ class PacketsTest {
     }
 
     @Test
+    fun bia_decode_26B_realDevice() {
+        // 2026-10-25 真机 0x97 明文（离线用 0x29 下发的 WorkKey 解出）：
+        // 57.6kg / 14.3% / 2026-10-25 23:23:23 / 阻抗 5553 / HR 87；无手部阻抗
+        val bia = BiaMeasurement.decode("80168f00ea070a19171717a0b115000000000000000000005700".hexToBytes())
+        assertEquals(57.6, bia.weightKg)
+        assertEquals(14.3, bia.fatPct)
+        assertEquals(2026, bia.year)
+        assertEquals(10, bia.month)
+        assertEquals(25, bia.day)
+        assertEquals(23, bia.hour)
+        assertEquals(23, bia.minute)
+        assertEquals(23, bia.second)
+        assertEquals(0, bia.dayOfWeek) // 26B 包不带星期（offset 11 是固定 0xA0）
+        assertEquals(listOf(5553, 0, 0, 0, 0, 0), bia.feet)
+        assertEquals(87, bia.heartRate)
+        assertEquals(emptyList(), bia.hands)
+        assertTrue(bia.isPlausible())
+    }
+
+    @Test
     fun bia_rejects_shortPacket() {
-        // 严格 38B（参考实现 ≥26B 容错属差异，见 PLAN 差异补记）
+        // 仅接受 26B（无手部）或 38B（含手部）；其余长度拒收
+        assertFailsWith<IllegalArgumentException> {
+            BiaMeasurement.decode(ByteArray(25))
+        }
         assertFailsWith<IllegalArgumentException> {
             BiaMeasurement.decode(ByteArray(37))
         }

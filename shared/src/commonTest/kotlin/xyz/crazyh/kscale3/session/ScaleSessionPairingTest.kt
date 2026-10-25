@@ -9,6 +9,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import xyz.crazyh.kscale3.ble.GattUuids
+import xyz.crazyh.kscale3.domain.MeasurementResult
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfileDraft
 import xyz.crazyh.kscale3.protocol.FrameMagic
@@ -162,6 +163,101 @@ class ScaleSessionPairingTest {
         val result = job.await()
         assertIs<PairingResult.Failure>(result)
         assertEquals(SessionError.UnexpectedReply("tare", 7), (result as PairingResult.Failure).error)
+    }
+
+    @Test
+    fun pair_tareAckOnly_timesOut() = runTest {
+        // status=1 且无体重（无称重数据）——用户始终不上秤 → 25s 超时
+        val scale = TestScale()
+        val session = ScaleSessionImpl(scale.peripheral, options())
+        val job = async { session.pair(draft, TEST_MAC) }
+
+        scale.handshake()
+        scale.peripheral.awaitWrite() // 0x45 arm
+        scale.collectFrames(GattUuids.HUID_TARE, 4)
+        scale.sendEncrypted(GattUuids.HUID_TARE, ByteArray(15).also { it[0] = 1 })
+
+        val result = job.await()
+        assertIs<PairingResult.Failure>(result)
+        assertEquals(SessionError.Timeout("tare"), (result as PairingResult.Failure).error)
+    }
+
+    @Test
+    fun pair_tareStatus1WithWeight_succeeds() = runTest {
+        // 真机 2026-10-25 实测（3 次一致）：0x2D 只回一条 status=1 + 体重 57.5kg 的 15B 消息，
+        // 25s 内不再有 status=0 —— status=1 有体重即视为验证称重完成并继续（勿死等 status=0）。
+        val scale = TestScale()
+        val session = ScaleSessionImpl(scale.peripheral, options())
+        val job = async { session.pair(draft, TEST_MAC) }
+
+        scale.handshake()
+        scale.peripheral.awaitWrite() // 0x45 arm
+        scale.collectFrames(GattUuids.HUID_TARE, 4)
+        // 真机明文 0176169715...：status=1, weight=0x1676=5750 (57.50kg), 后随疑似阻抗 0x1597
+        scale.sendEncrypted(GattUuids.HUID_TARE, tarePayload(status = 1, weightDg = 5750))
+
+        scale.awaitTimeSyncAndAck()
+        scale.awaitQuery(GattUuids.SERIAL)
+        scale.sendFrames(GattUuids.SERIAL, "SN42".encodeToByteArray(), FrameMagic.PlainDownstream)
+        scale.awaitQuery(GattUuids.MODEL)
+        scale.sendFrames(GattUuids.MODEL, "M00F7".encodeToByteArray(), FrameMagic.PlainDownstream)
+        scale.awaitQuery(GattUuids.CONFIG)
+        scale.sendStatus(GattUuids.CONFIG, 1)
+        val profile = scale.profileExchange(code = 0)
+        assertEquals(5750, profile.weightDg)
+        scale.awaitQuery(GattUuids.MODEL)
+        scale.awaitQuery(GattUuids.OFFLINE_HISTORY)
+        scale.awaitProfilePacket()
+        scale.sendStatus(GattUuids.USER_PROFILE, 0)
+        scale.awaitQuery(GattUuids.BIA)
+        // 真机 26B 明文（2026-10-25 实测）：57.6kg / 14.3% / 2026-10-25 23:23:23 / 无手部阻抗
+        scale.sendEncrypted(
+            GattUuids.BIA,
+            "80168f00ea070a19171717a0b115000000000000000000005700".hexToBytes(),
+        )
+        scale.awaitProfilePacket()
+
+        val success = assertIs<PairingResult.Success>(job.await())
+        val measurement = assertIs<MeasurementResult>(success.result)
+        assertEquals(57.6, measurement.weightKg)
+        assertEquals(14.3, measurement.fatPct)
+        assertEquals(87, measurement.heartRate)
+        assertEquals(emptyList<Int>(), measurement.handsImp)
+        assertEquals("2026-10-25-23-23-23+7", measurement.deviceTs)
+    }
+
+    @Test
+    fun pair_tareAckThenRealTare_succeeds() = runTest {
+        // 真机时序：先 status=1 回执（accepted-but-incomplete），上秤稳定后另发 status=0 皮重
+        val scale = TestScale()
+        val session = ScaleSessionImpl(scale.peripheral, options())
+        val job = async { session.pair(draft, TEST_MAC) }
+
+        scale.handshake()
+        scale.peripheral.awaitWrite() // 0x45 arm
+        scale.collectFrames(GattUuids.HUID_TARE, 4)
+        scale.sendEncrypted(GattUuids.HUID_TARE, ByteArray(15).also { it[0] = 1 }) // 缺验证称重回执
+        scale.sendEncrypted(GattUuids.HUID_TARE, tarePayload(status = 0, weightDg = 6234))
+
+        scale.awaitTimeSyncAndAck()
+        scale.awaitQuery(GattUuids.SERIAL)
+        scale.sendFrames(GattUuids.SERIAL, "SN42".encodeToByteArray(), FrameMagic.PlainDownstream)
+        scale.awaitQuery(GattUuids.MODEL)
+        scale.sendFrames(GattUuids.MODEL, "M00F7".encodeToByteArray(), FrameMagic.PlainDownstream)
+        scale.awaitQuery(GattUuids.CONFIG)
+        scale.sendStatus(GattUuids.CONFIG, 1)
+        val profile = scale.profileExchange(code = 0)
+        assertEquals(6234, profile.weightDg) // 皮重取自 status=0 那条
+        scale.awaitQuery(GattUuids.MODEL)
+        scale.awaitQuery(GattUuids.OFFLINE_HISTORY)
+        scale.awaitProfilePacket()
+        scale.sendStatus(GattUuids.USER_PROFILE, 0)
+        scale.awaitQuery(GattUuids.BIA)
+        scale.sendEncrypted(GattUuids.BIA, biaPayload())
+        scale.awaitProfilePacket()
+
+        val result = job.await()
+        assertIs<PairingResult.Success>(result)
     }
 
     @Test

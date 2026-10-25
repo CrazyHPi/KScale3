@@ -3,11 +3,12 @@ package xyz.crazyh.kscale3.ui.vm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -49,23 +50,39 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
 
+    private val _scanError = MutableStateFlow<String?>(null)
+    val scanError: StateFlow<String?> = _scanError.asStateFlow()
+
     private val _scanResults = MutableStateFlow<List<BleAdvertisement>>(emptyList())
     val scanResults: StateFlow<List<BleAdvertisement>> = _scanResults.asStateFlow()
+
+    /** 收到的原始广播条数（诊断用：区分"没在扫/扫不到"与"被过滤"）。 */
+    private val _adCount = MutableStateFlow(0)
+    val adCount: StateFlow<Int> = _adCount.asStateFlow()
 
     private var scanJob: Job? = null
 
     fun startScan() {
         if (scanJob?.isActive == true) return
         _scanning.value = true
+        _scanError.value = null
+        _adCount.value = 0
         scanJob = viewModelScope.launch {
             try {
+                // 不按名称过滤（名称可能为空/不符而误杀全部）——疑似秤排前，其余也显示
                 container.createBleScanner().scan()
-                    .filter { adv -> adv.name?.let { SCALE_NAME_FILTER.containsMatchIn(it) } == true }
                     .collect { adv ->
+                        _adCount.value = _adCount.value + 1
                         _scanResults.update { list ->
-                            (list.filter { it.identifier != adv.identifier } + adv).sortedByDescending { it.rssi }
+                            (list.filter { it.identifier != adv.identifier } + adv).sortedWith(
+                                compareByDescending<BleAdvertisement> { it.isLikelyScale() }
+                                    .thenByDescending { it.rssi },
+                            )
                         }
                     }
+            } catch (e: Exception) {
+                // 权限缺失/蓝牙关闭等（Kable 会抛 IllegalStateException）——转为提示，不崩溃
+                _scanError.value = e.message ?: "扫描失败（请检查蓝牙权限与开关）"
             } finally {
                 _scanning.value = false
             }
@@ -142,12 +159,15 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
                 }
             }
 
-            is PairingResult.Failure -> Unit // SessionState.Failed 已带原因
+            is PairingResult.Failure -> println("[KScale3] session failed: ${result.error}") // SessionState.Failed 已带原因
         }
     }
 
     fun cancelSession() {
         session?.close()
+        session = null
+        // Cancel must dismiss the dialog even if the session already ended (activeJob == null).
+        _sessionState.value = SessionState.Idle
     }
 
     /** Result 屏保存入库。 */
@@ -162,21 +182,29 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private fun launchOperation(block: suspend (ScaleSession, String) -> Unit) {
         if (_busy.value) return
         val device = device.value ?: return // 未配对设备：UI 层禁用入口
-        // 帧日志进 VM（SettingsScreen 调试屏消费）：日志仅帧 hex——载荷均加密、MAC 不上线
+        // 帧日志进 VM（SettingsScreen 调试屏消费）+ println 落 logcat 便于真机诊断
+        // （日志仅帧 hex——载荷均加密、MAC 不上线）
         val options = SessionOptions(onLog = { line ->
+            println("[KScale3] $line")
             _frameLog.update { (it + line).takeLast(FRAME_LOG_CAPACITY) }
         })
         val s = container.createScaleSession(container.createBlePeripheral(device.bleId), options)
         session = s
+        println("[KScale3] session start: mac=${device.mac} bleId=${device.bleId}")
         _busy.value = true
         viewModelScope.launch {
             val stateJob = launch { s.state.collect { _sessionState.value = it } }
             val infoJob = launch { s.hardwareInfo.collect { _hardwareInfo.value = it } }
             try {
                 block(s, device.mac)
-            } catch (_: SessionException) {
-                // 失败原因已在 SessionState.Failed
+            } catch (e: SessionException) {
+                // 失败原因已在 SessionState.Failed；完整信息（拒收原因/步骤）落 logcat 诊断
+                println("[KScale3] session failed: ${e.message}")
             } finally {
+                // StateFlow 收集是异步的：先同步终态，避免 cancel 掉 collector 时丢掉
+                // 最后一次 Failed/Paired 发射（真机表现为对话框永远停在 AwaitingMeasurement）。
+                // 用户取消时协程已非 active——保持 Idle，勿把会话最后状态同步回来。
+                _sessionState.value = if (currentCoroutineContext().isActive) s.state.value else SessionState.Idle
                 stateJob.cancel()
                 infoJob.cancel()
                 _busy.value = false
@@ -187,7 +215,10 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private fun now(): Instant = kotlin.time.Clock.System.now()
 
     private companion object {
-        val SCALE_NAME_FILTER = Regex("HaigeBLE|Scale 3|HUAWEI Scale", RegexOption.IGNORE_CASE)
         const val FRAME_LOG_CAPACITY: Int = 500
     }
 }
+
+/** 名称疑似华为秤（PLAN 过滤词）；只作排序/徽章提示，不隐藏其他设备。 */
+fun BleAdvertisement.isLikelyScale(): Boolean =
+    name?.let { Regex("HaigeBLE|Scale 3|HUAWEI Scale", RegexOption.IGNORE_CASE).containsMatchIn(it) } == true
