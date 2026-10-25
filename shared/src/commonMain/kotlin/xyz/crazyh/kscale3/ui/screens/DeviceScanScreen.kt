@@ -92,19 +92,16 @@ fun DeviceScanScreen(
             Button(onClick = { permission.request() }) { Text("授权蓝牙权限") }
         }
 
-        SectionTitle("1. MAC 地址（RootKey 密钥输入）")
+        SectionTitle("设备 MAC 地址")
         OutlinedTextField(
             value = macInput,
             onValueChange = { macInput = it; error = null },
             label = { Text(if (isIos) "秤身标签 MAC（必填）" else "MAC（留空取扫描地址，可手填覆盖）") },
-            supportingText = {
-                Text(if (isIos) "iPhone 无法读取物理 MAC，请查看秤身标签" else "隐私随机化时扫描地址≠标签 MAC，请以标签为准")
-            },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
 
-        SectionTitle("2. 选择设备")
+        SectionTitle("扫描 / 选择设备")
         Row {
             Button(
                 onClick = { vm.startScan() },

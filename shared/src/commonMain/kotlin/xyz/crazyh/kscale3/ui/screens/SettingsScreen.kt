@@ -69,13 +69,13 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
                 onClick = { confirmForget = true },
                 enabled = !busy,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                modifier = Modifier.padding(top = 12.dp),
+                modifier = Modifier.padding(top = 12.dp).align(Alignment.CenterHorizontally),
             ) {
                 Text("忘记已配对的秤")
             }
         }
 
-        SectionTitle("已注册用户（HUID 打码）")
+        SectionTitle("已注册用户")
         val registered = users.filter { it.huid != null }
         if (registered.isEmpty()) {
             Text("暂无——可在「用户」页注册到秤。", style = MaterialTheme.typography.bodySmall)
@@ -92,7 +92,7 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
             Switch(checked = debugLog, onCheckedChange = { debugLog = it })
         }
         Text(
-            "日志仅帧 hex（载荷均加密；MAC/HUID 不上线、不落盘）。",
+            "日志 仅显示帧 (hex)",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -119,8 +119,8 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
             title = { Text("忘记已配对的秤？") },
             text = {
                 Text(
-                    "将清除本机保存的秤（MAC / BLE 标识），之后需要重新扫描配对。" +
-                            "用户档案、HUID 与历史测量不受影响。",
+                    "将清除本机保存的秤，再次连接需要重新配对。\n" +
+                            "用户档案与历史体重不会被清楚。",
                 )
             },
             confirmButton = {

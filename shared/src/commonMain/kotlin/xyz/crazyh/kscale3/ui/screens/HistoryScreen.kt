@@ -16,9 +16,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -66,22 +68,28 @@ fun HistoryScreen(
             }
         }
 
-        SectionTitle("体重趋势（kg）")
+        SectionTitle("体重趋势")
         if (measurements.isEmpty()) {
-            Text("暂无测量数据。", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "暂无测量数据",
+                fontSize = 16.sp,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(12.dp).align(Alignment.CenterHorizontally)
+            )
         } else {
             WeightTrendChart(points = measurements.toTrendPoints())
-        }
 
-        SectionTitle("测量列表")
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(measurements, key = { it.id }) { m ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                        Text(formatInstant(m.measuredAt), fontWeight = FontWeight.Bold)
-                        MetricRow("体重", "${m.weightKg.rounded(2)} kg")
-                        MetricRow("体脂率", "${m.fatPct.rounded(1)} %")
-                        MetricRow("心率", "${m.heartRate} bpm")
+            // hide history list when no measurements
+            SectionTitle("测量列表")
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(measurements, key = { it.id }) { m ->
+                    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(formatInstant(m.measuredAt), fontWeight = FontWeight.Bold)
+                            MetricRow("体重", "${m.weightKg.rounded(2)} kg")
+                            MetricRow("体脂率", "${m.fatPct.rounded(1)} %")
+                            MetricRow("心率", "${m.heartRate} bpm")
+                        }
                     }
                 }
             }

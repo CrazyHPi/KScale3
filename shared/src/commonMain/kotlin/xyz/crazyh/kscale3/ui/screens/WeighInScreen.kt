@@ -62,7 +62,7 @@ fun WeighInScreen(
         // 已保存设备常驻显示：冷启动不再经过扫描页，用户能确认配对仍在
         device?.let {
             Text(
-                "已配对：${it.name}（秤待机不广播时，先踩一下秤唤醒再开始）",
+                "当前配对设备：${it.name}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
