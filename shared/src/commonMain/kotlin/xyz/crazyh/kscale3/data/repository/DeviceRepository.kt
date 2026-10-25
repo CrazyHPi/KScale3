@@ -9,4 +9,7 @@ interface DeviceRepository {
 
     /** 保存/更新配对的秤（覆盖旧记录）。 */
     suspend fun save(device: PairedDevice)
+
+    /** 忘记已配对的秤（仅清 `paired_device`；用户档案/HUID/测量记录不受影响）。 */
+    suspend fun clear()
 }

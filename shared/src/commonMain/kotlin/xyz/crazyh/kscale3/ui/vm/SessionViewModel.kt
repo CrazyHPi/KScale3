@@ -142,6 +142,16 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         return true
     }
 
+    /**
+     * 忘记已配对的秤：仅清 `paired_device`（用户档案/HUID/测量记录保留）。
+     * 清空后 [deviceState] 变为 [DeviceState.None]，调用方跳回扫描配对页。
+     */
+    suspend fun forgetDevice() {
+        if (_busy.value) return
+        container.deviceRepository.clear()
+        _hardwareInfo.value = HardwareInfo()
+    }
+
     // ---- 会话 ----
 
     private val _sessionState = MutableStateFlow<SessionState>(SessionState.Idle)

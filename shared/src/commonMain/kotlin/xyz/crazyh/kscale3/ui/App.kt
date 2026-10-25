@@ -141,7 +141,15 @@ fun App(container: AppContainer) {
                         HistoryScreen(container = container)
                     }
                     composable<Route.Settings> {
-                        SettingsScreen(vm = sessionVm)
+                        SettingsScreen(
+                            vm = sessionVm,
+                            onForgetDevice = {
+                                // 清库后回扫描配对页；保留下方 WeighIn，配对完成后可复用（不叠栈）
+                                navController.navigate(Route.DeviceScan) {
+                                    popUpTo(Route.Settings) { inclusive = true }
+                                }
+                            },
+                        )
                     }
                 }
             }

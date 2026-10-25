@@ -3,6 +3,7 @@ package xyz.crazyh.kscale3.data.repository
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
@@ -200,5 +201,26 @@ class SqlRepositoriesTest {
         assertEquals("11:22:33:44:55:66", replaced.mac)
         assertEquals("00000000-0000-0000-0000-00000000f00d", replaced.bleId)
         assertNull(replaced.model)
+    }
+
+    @Test
+    fun device_clear_removesRow() = runTest {
+        val db = createDb()
+        val repo = SqlDeviceRepository(db)
+        repo.save(
+            PairedDevice(
+                id = 0,
+                mac = "AA:BB:CC:DD:EE:FF",
+                bleId = "AA:BB:CC:DD:EE:FF",
+                name = "HaigeBLE",
+                model = null,
+                sn = null,
+                lastSeen = t0,
+            ),
+        )
+        assertNotNull(repo.observe().first())
+
+        repo.clear()
+        assertNull(repo.observe().first())
     }
 }

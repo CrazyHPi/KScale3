@@ -32,6 +32,10 @@ class SqlDeviceRepository(
             )
         }
     }
+
+    override suspend fun clear() {
+        queries.deleteAll()
+    }
 }
 
 private fun Paired_device.toDomain(): PairedDevice = PairedDevice(
