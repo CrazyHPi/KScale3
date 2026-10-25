@@ -58,6 +58,25 @@ fun DeviceScanScreen(
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("设备扫描与配对", style = androidx.compose.material3.MaterialTheme.typography.headlineSmall)
 
+        // 已保存设备直接可用：扫描列表只含"本次扫描收到的广播"（冷启动时为空），
+        // 不应让用户误以为配对丢失、必须重新扫。
+        device?.let { saved ->
+            Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("已保存设备", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+                    Text(saved.name)
+                    Text(
+                        "MAC ${saved.mac}" +
+                            if (saved.bleId != saved.mac) " · BLE ${saved.bleId}" else "",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = onDone, modifier = Modifier.padding(top = 8.dp)) {
+                        Text("使用已保存设备")
+                    }
+                }
+            }
+        }
+
         if (!permission.granted) {
             Text(
                 "需要蓝牙权限才能扫描与连接——请点「授权」并在系统弹窗中允许。",

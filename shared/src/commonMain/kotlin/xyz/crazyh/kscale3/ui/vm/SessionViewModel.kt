@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,14 +32,31 @@ import xyz.crazyh.kscale3.session.SessionState
 /** Result 屏待保存的测量（归属用户 + 会话产物）。 */
 data class PendingMeasurement(val userId: Long, val result: MeasurementResult)
 
+/** 已配对设备读取状态：区分"库还没读到"与"确实没有设备"（前者不能直接判为未配对）。 */
+sealed interface DeviceState {
+    data object Loading : DeviceState
+    data object None : DeviceState
+    data class Found(val device: PairedDevice) : DeviceState
+}
+
 /**
  * 设备扫描/配对/称重/结果暂存的共享 ViewModel（DeviceScan/Users/WeighIn/Result 共用一个实例）。
  * 每次操作新建 ScaleSession（PLAN：每次称重/配对新建会话）。
  */
 class SessionViewModel(private val container: AppContainer) : ViewModel() {
 
-    val device: StateFlow<PairedDevice?> =
+    /**
+     * 已配对设备读取状态（Loading = 尚未读到首帧）。
+     * 单一 Flow 原子切换，避免"已加载"与"设备值"分开发射时 App 以错误起点建导航图。
+     */
+    val deviceState: StateFlow<DeviceState> =
         container.deviceRepository.observe()
+            .map { device -> if (device == null) DeviceState.None else DeviceState.Found(device) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, DeviceState.Loading)
+
+    val device: StateFlow<PairedDevice?> =
+        deviceState
+            .map { (it as? DeviceState.Found)?.device }
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val users: StateFlow<List<UserProfile>> =

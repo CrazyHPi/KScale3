@@ -59,6 +59,15 @@ fun WeighInScreen(
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("开始称重", style = MaterialTheme.typography.headlineSmall)
 
+        // 已保存设备常驻显示：冷启动不再经过扫描页，用户能确认配对仍在
+        device?.let {
+            Text(
+                "已配对：${it.name}（秤待机不广播时，先踩一下秤唤醒再开始）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         if (device == null) {
             Text(
                 "尚未配对设备——请先在「设备」页扫描配对。",

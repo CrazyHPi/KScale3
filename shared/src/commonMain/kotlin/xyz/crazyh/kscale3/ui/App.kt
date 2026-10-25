@@ -1,5 +1,6 @@
 package xyz.crazyh.kscale3.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -7,6 +8,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -24,6 +26,7 @@ import xyz.crazyh.kscale3.ui.screens.SettingsScreen
 import xyz.crazyh.kscale3.ui.screens.UserEditScreen
 import xyz.crazyh.kscale3.ui.screens.UsersScreen
 import xyz.crazyh.kscale3.ui.screens.WeighInScreen
+import xyz.crazyh.kscale3.ui.vm.DeviceState
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 private data class Tab(val label: String, val glyph: String, val route: Route)
@@ -38,7 +41,8 @@ private val TABS = listOf(
 
 /**
  * 应用根 Composable：Scaffold + 四 Tab 导航（称重/用户/历史/设置）；
- * DeviceScan 为起始页，UserEdit/Result 为压栈页。
+ * 起始页按是否已保存设备决定（已配对 → 称重；未配对 → DeviceScan），
+ * UserEdit/Result 为压栈页。
  * [SessionViewModel] 挂在根级（跨屏共享：扫描/设备/会话/待保存结果）。
  */
 @Composable
@@ -46,6 +50,7 @@ fun App(container: AppContainer) {
     MaterialTheme {
         val navController = rememberNavController()
         val sessionVm: SessionViewModel = viewModel { SessionViewModel(container) }
+        val deviceState by sessionVm.deviceState.collectAsState()
         val backStackEntry by navController.currentBackStackEntryAsState()
         val currentRouteClass = backStackEntry?.destination?.route
 
@@ -78,58 +83,66 @@ fun App(container: AppContainer) {
                 }
             },
         ) { padding ->
-            NavHost(
-                navController = navController,
-                startDestination = Route.DeviceScan,
-                modifier = Modifier.padding(padding),
-            ) {
-                composable<Route.DeviceScan> {
-                    DeviceScanScreen(
-                        vm = sessionVm,
-                        onDone = {
-                            navController.navigate(Route.WeighIn) {
-                                popUpTo(Route.DeviceScan) { inclusive = true }
-                            }
-                        },
-                    )
-                }
-                composable<Route.Users> {
-                    UsersScreen(
-                        vm = sessionVm,
-                        onEditUser = { userId -> navController.navigate(Route.UserEdit(userId)) },
-                    )
-                }
-                composable<Route.UserEdit> { entry ->
-                    UserEditScreen(
-                        container = container,
-                        vm = sessionVm,
-                        userId = entry.toRoute<Route.UserEdit>().userId,
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable<Route.WeighIn> {
-                    WeighInScreen(
-                        vm = sessionVm,
-                        onResultReady = { navController.navigate(Route.Result) },
-                        onGoRegister = { navController.navigate(Route.Users) },
-                        onGoDevice = { navController.navigate(Route.DeviceScan) },
-                    )
-                }
-                composable<Route.Result> {
-                    ResultScreen(
-                        vm = sessionVm,
-                        onDone = {
-                            navController.navigate(Route.WeighIn) {
-                                popUpTo(Route.WeighIn) { inclusive = true }
-                            }
-                        },
-                    )
-                }
-                composable<Route.History> {
-                    HistoryScreen(container = container)
-                }
-                composable<Route.Settings> {
-                    SettingsScreen(vm = sessionVm)
+            // 等设备库首帧读完再决定起始页：已保存设备直接进称重主界面，
+            // 否则进扫描配对页——避免每次冷启动都被丢到扫描页重新配对。
+            if (deviceState is DeviceState.Loading) {
+                Box(Modifier.padding(padding)) { }
+            } else {
+                NavHost(
+                    navController = navController,
+                    startDestination = if (deviceState is DeviceState.Found) Route.WeighIn else Route.DeviceScan,
+                    modifier = Modifier.padding(padding),
+                ) {
+                    composable<Route.DeviceScan> {
+                        DeviceScanScreen(
+                            vm = sessionVm,
+                            onDone = {
+                                navController.navigate(Route.WeighIn) {
+                                    popUpTo(Route.DeviceScan) { inclusive = true }
+                                    // 从称重页进入扫描页时，返回后复用已有 WeighIn，不叠栈
+                                    launchSingleTop = true
+                                }
+                            },
+                        )
+                    }
+                    composable<Route.Users> {
+                        UsersScreen(
+                            vm = sessionVm,
+                            onEditUser = { userId -> navController.navigate(Route.UserEdit(userId)) },
+                        )
+                    }
+                    composable<Route.UserEdit> { entry ->
+                        UserEditScreen(
+                            container = container,
+                            vm = sessionVm,
+                            userId = entry.toRoute<Route.UserEdit>().userId,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                    composable<Route.WeighIn> {
+                        WeighInScreen(
+                            vm = sessionVm,
+                            onResultReady = { navController.navigate(Route.Result) },
+                            onGoRegister = { navController.navigate(Route.Users) },
+                            onGoDevice = { navController.navigate(Route.DeviceScan) },
+                        )
+                    }
+                    composable<Route.Result> {
+                        ResultScreen(
+                            vm = sessionVm,
+                            onDone = {
+                                navController.navigate(Route.WeighIn) {
+                                    popUpTo(Route.WeighIn) { inclusive = true }
+                                }
+                            },
+                        )
+                    }
+                    composable<Route.History> {
+                        HistoryScreen(container = container)
+                    }
+                    composable<Route.Settings> {
+                        SettingsScreen(vm = sessionVm)
+                    }
                 }
             }
         }
