@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import xyz.crazyh.kscale3.domain.BodyCompositionEstimates
 import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.sessionGuide
 import kotlin.math.pow
@@ -77,6 +78,38 @@ fun MetricCard(title: String, badge: String? = null, content: @Composable () -> 
             }
             content()
         }
+    }
+}
+
+/**
+ * 测量详情（真值卡 + 估算卡）：结果屏与历史详情弹窗共用，保证两处展示一致。
+ * 真值 = [weightKg] / [fatPct] / [heartRate]；其余来自 [estimates]（UI 标注"估算值"）。
+ */
+@Composable
+fun MeasurementDetail(
+    weightKg: Double,
+    fatPct: Double,
+    heartRate: Int,
+    estimates: BodyCompositionEstimates,
+) {
+    SectionTitle("真值（秤直接测量）")
+    MetricCard(title = "身体数据") {
+        MetricRow("体重", "${weightKg.rounded(2)} kg")
+        MetricRow("体脂率", "${fatPct.rounded(1)} %")
+        MetricRow("心率", "${heartRate} bpm")
+    }
+
+    SectionTitle("估算值（经验公式，仅供参考）")
+    MetricCard(title = "体成分", badge = "估算值") {
+        MetricRow("去脂体重", "${(weightKg - estimates.fatMassKg).rounded(2)} kg")
+        MetricRow("脂肪量", "${estimates.fatMassKg.rounded(2)} kg")
+        MetricRow("体水分", "${estimates.tbwKg.rounded(2)} kg")
+        MetricRow("肌肉量", "${estimates.muscleKg.rounded(2)} kg")
+        MetricRow("骨量", "${estimates.boneKg.rounded(2)} kg")
+    }
+    MetricCard(title = "其他", badge = "估算值") {
+        MetricRow("BMI", estimates.bmi.rounded(1))
+        MetricRow("基础代谢", "${estimates.bmr.rounded(0)} kcal")
     }
 }
 

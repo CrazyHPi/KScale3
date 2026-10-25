@@ -15,10 +15,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import xyz.crazyh.kscale3.ui.components.MetricCard
-import xyz.crazyh.kscale3.ui.components.MetricRow
-import xyz.crazyh.kscale3.ui.components.SectionTitle
-import xyz.crazyh.kscale3.ui.components.rounded
+import xyz.crazyh.kscale3.ui.components.MeasurementDetail
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 /**
@@ -54,25 +51,12 @@ fun ResultScreen(
         val r = p.result
         Text("设备时间：${r.deviceTs}", style = MaterialTheme.typography.bodySmall)
 
-        SectionTitle("真值（秤直接测量）")
-        MetricCard(title = "身体数据") {
-            MetricRow("体重", "${r.weightKg.rounded(2)} kg")
-            MetricRow("体脂率", "${r.fatPct.rounded(1)} %")
-            MetricRow("心率", "${r.heartRate} bpm")
-        }
-
-        SectionTitle("估算值（经验公式，仅供参考）")
-        MetricCard(title = "体成分", badge = "估算值") {
-            MetricRow("去脂体重", "${(r.weightKg - r.estimates.fatMassKg).rounded(2)} kg")
-            MetricRow("脂肪量", "${r.estimates.fatMassKg.rounded(2)} kg")
-            MetricRow("体水分", "${r.estimates.tbwKg.rounded(2)} kg")
-            MetricRow("肌肉量", "${r.estimates.muscleKg.rounded(2)} kg")
-            MetricRow("骨量", "${r.estimates.boneKg.rounded(2)} kg")
-        }
-        MetricCard(title = "其他", badge = "估算值") {
-            MetricRow("BMI", r.estimates.bmi.rounded(1))
-            MetricRow("基础代谢", "${r.estimates.bmr.rounded(0)} kcal")
-        }
+        MeasurementDetail(
+            weightKg = r.weightKg,
+            fatPct = r.fatPct,
+            heartRate = r.heartRate,
+            estimates = r.estimates,
+        )
 
         if (!saved) {
             Button(

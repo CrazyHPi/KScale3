@@ -1,5 +1,6 @@
 package xyz.crazyh.kscale3.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,13 +10,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -26,6 +33,9 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import xyz.crazyh.kscale3.di.AppContainer
+import xyz.crazyh.kscale3.domain.Measurement
+import xyz.crazyh.kscale3.domain.toEstimates
+import xyz.crazyh.kscale3.ui.components.MeasurementDetail
 import xyz.crazyh.kscale3.ui.components.MetricRow
 import xyz.crazyh.kscale3.ui.components.SectionTitle
 import xyz.crazyh.kscale3.ui.components.WeightTrendChart
@@ -45,6 +55,7 @@ fun HistoryScreen(
     val users by vm.users.collectAsState()
     val selectedId by vm.selectedUserId.collectAsState()
     val measurements by vm.measurements.collectAsState()
+    var detail by remember { mutableStateOf<Measurement?>(null) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("历史与趋势", style = MaterialTheme.typography.headlineSmall)
@@ -81,9 +92,17 @@ fun HistoryScreen(
 
             // hide history list when no measurements
             SectionTitle("测量列表")
+            Text(
+                "点击卡片查看详细数据",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
             LazyColumn(Modifier.fillMaxSize()) {
                 items(measurements, key = { it.id }) { m ->
-                    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Card(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { detail = m },
+                    ) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
                             Text(formatInstant(m.measuredAt), fontWeight = FontWeight.Bold)
                             MetricRow("体重", "${m.weightKg.rounded(2)} kg")
@@ -95,6 +114,40 @@ fun HistoryScreen(
             }
         }
     }
+
+    // 历史卡片详情弹窗：与称重结果屏共用真值/估算值展示
+    detail?.let { m ->
+        MeasurementDetailDialog(measurement = m, onDismiss = { detail = null })
+    }
+}
+
+/** 历史记录详情：真值 + 估算值（与 [ResultScreen] 同一套内容）。 */
+@Composable
+private fun MeasurementDetailDialog(
+    measurement: Measurement,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(formatInstant(measurement.measuredAt)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "设备时间：${measurement.deviceTs}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                MeasurementDetail(
+                    weightKg = measurement.weightKg,
+                    fatPct = measurement.fatPct,
+                    heartRate = measurement.heartRate,
+                    estimates = measurement.toEstimates(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        },
+    )
 }
 
 private fun formatInstant(instant: Instant): String {

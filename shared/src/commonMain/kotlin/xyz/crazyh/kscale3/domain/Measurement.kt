@@ -28,3 +28,13 @@ data class Measurement(
     val bmi: Double,
     val bmr: Double,
 )
+
+/** 入库快照 → 详情 UI 使用的估算值形态。 */
+fun Measurement.toEstimates(): BodyCompositionEstimates = BodyCompositionEstimates(
+    fatMassKg = fatMassKg,
+    tbwKg = tbwKg,
+    boneKg = boneKg,
+    muscleKg = muscleKg,
+    bmi = bmi,
+    bmr = bmr,
+)
