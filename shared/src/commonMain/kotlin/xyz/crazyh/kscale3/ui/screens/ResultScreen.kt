@@ -15,7 +15,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
 import xyz.crazyh.kscale3.ui.components.MeasurementDetail
+import xyz.crazyh.kscale3.ui.preview.previewResult
+import xyz.crazyh.kscale3.ui.vm.PendingMeasurement
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 /**
@@ -28,6 +31,21 @@ fun ResultScreen(
     onDone: () -> Unit,
 ) {
     val pending by vm.pendingResult.collectAsState()
+
+    ResultContent(
+        pending = pending,
+        onSave = vm::savePendingMeasurement,
+        onDone = onDone,
+    )
+}
+
+/** 无 ViewModel 的结果 UI（供 @Preview）。 */
+@Composable
+private fun ResultContent(
+    pending: PendingMeasurement?,
+    onSave: () -> Unit,
+    onDone: () -> Unit,
+) {
     val saved = pending == null
 
     Column(
@@ -60,17 +78,41 @@ fun ResultScreen(
 
         if (!saved) {
             Button(
-                onClick = { vm.savePendingMeasurement() },
+                onClick = onSave,
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             ) {
                 Text("保存入库")
             }
         }
         OutlinedButton(
-            onClick = { vm.savePendingMeasurement(); onDone() },
+            onClick = { onSave(); onDone() },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
             Text(if (saved) "完成" else "保存并返回称重")
         }
+    }
+}
+
+@Preview
+@Composable
+private fun ResultScreenPreview() {
+    MaterialTheme {
+        ResultContent(
+            pending = PendingMeasurement(userId = 1, result = previewResult),
+            onSave = {},
+            onDone = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun ResultScreenSavedPreview() {
+    MaterialTheme {
+        ResultContent(
+            pending = null,
+            onSave = {},
+            onDone = {},
+        )
     }
 }

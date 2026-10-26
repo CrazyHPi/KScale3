@@ -24,11 +24,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
+import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.session.SessionError
 import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.components.SessionProgressDialog
 import xyz.crazyh.kscale3.ui.errorText
+import xyz.crazyh.kscale3.ui.preview.previewDevice
+import xyz.crazyh.kscale3.ui.preview.previewUsers
 import xyz.crazyh.kscale3.ui.sessionGuide
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
@@ -49,17 +53,41 @@ fun WeighInScreen(
     val busy by vm.busy.collectAsState()
     val pending by vm.pendingResult.collectAsState()
 
+    // 测量完成 → 结果屏
+    LaunchedEffect(pending) {
+        if (pending != null) onResultReady()
+    }
+
+    WeighInContent(
+        users = users,
+        device = device,
+        sessionState = sessionState,
+        busy = busy,
+        onStartWeighIn = vm::startWeighIn,
+        onCancelSession = vm::cancelSession,
+        onGoRegister = onGoRegister,
+        onGoDevice = onGoDevice,
+    )
+}
+
+/** 无 ViewModel 的称重 UI（供 @Preview）。 */
+@Composable
+private fun WeighInContent(
+    users: List<UserProfile>,
+    device: PairedDevice?,
+    sessionState: SessionState,
+    busy: Boolean,
+    onStartWeighIn: (UserProfile) -> Unit,
+    onCancelSession: () -> Unit,
+    onGoRegister: () -> Unit,
+    onGoDevice: () -> Unit,
+) {
     var selected by remember { mutableStateOf<UserProfile?>(null) }
 
     // 用户可能在其他 Tab 被删除：列表刷新后清掉失效选择，避免用已删档案发起会话
     LaunchedEffect(users) {
         val selectedId = selected?.id ?: return@LaunchedEffect
         if (users.none { it.id == selectedId }) selected = null
-    }
-
-    // 测量完成 → 结果屏
-    LaunchedEffect(pending) {
-        if (pending != null) onResultReady()
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -119,7 +147,7 @@ fun WeighInScreen(
                 )
                 RecoveryRow(
                     error = s.error,
-                    onRetry = { selected?.let { vm.startWeighIn(it) } },
+                    onRetry = { selected?.let { onStartWeighIn(it) } },
                     onGoRegister = onGoRegister,
                     onChangeUser = { selected = null },
                     onGoDevice = onGoDevice,
@@ -135,7 +163,7 @@ fun WeighInScreen(
         }
 
         Button(
-            onClick = { selected?.let { vm.startWeighIn(it) } },
+            onClick = { selected?.let { onStartWeighIn(it) } },
             enabled = device != null && selected?.huid != null && !busy,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
@@ -143,7 +171,41 @@ fun WeighInScreen(
         }
     }
 
-    SessionProgressDialog(state = sessionState, onCancel = { vm.cancelSession() }, onDismiss = {})
+    SessionProgressDialog(state = sessionState, onCancel = onCancelSession, onDismiss = {})
+}
+
+@Preview
+@Composable
+private fun WeighInScreenPreview() {
+    MaterialTheme {
+        WeighInContent(
+            users = previewUsers,
+            device = previewDevice,
+            sessionState = SessionState.Idle,
+            busy = false,
+            onStartWeighIn = {},
+            onCancelSession = {},
+            onGoRegister = {},
+            onGoDevice = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun WeighInScreenFailedPreview() {
+    MaterialTheme {
+        WeighInContent(
+            users = previewUsers,
+            device = previewDevice,
+            sessionState = SessionState.Failed(SessionError.UserNotRecognised),
+            busy = false,
+            onStartWeighIn = {},
+            onCancelSession = {},
+            onGoRegister = {},
+            onGoDevice = {},
+        )
+    }
 }
 
 /** 超时/Code 1/2 的恢复动作（PLAN UI-3）。 */

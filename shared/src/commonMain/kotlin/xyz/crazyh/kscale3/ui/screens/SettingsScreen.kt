@@ -26,9 +26,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import androidx.compose.ui.tooling.preview.Preview
+import xyz.crazyh.kscale3.domain.PairedDevice
+import xyz.crazyh.kscale3.domain.UserProfile
+import xyz.crazyh.kscale3.session.HardwareInfo
 import xyz.crazyh.kscale3.ui.components.MetricRow
 import xyz.crazyh.kscale3.ui.components.SectionTitle
 import xyz.crazyh.kscale3.ui.maskHuid
+import xyz.crazyh.kscale3.ui.preview.previewDevice
+import xyz.crazyh.kscale3.ui.preview.previewHardwareInfo
+import xyz.crazyh.kscale3.ui.preview.previewUsers
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 /**
@@ -45,9 +52,35 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
     val info by vm.hardwareInfo.collectAsState()
     val log by vm.frameLog.collectAsState()
     val busy by vm.busy.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    SettingsContent(
+        device = device,
+        users = users,
+        info = info,
+        log = log,
+        busy = busy,
+        onForgetDevice = {
+            scope.launch {
+                vm.forgetDevice()
+                onForgetDevice()
+            }
+        },
+    )
+}
+
+/** 无 ViewModel 的设置 UI（供 @Preview）。 */
+@Composable
+private fun SettingsContent(
+    device: PairedDevice?,
+    users: List<UserProfile>,
+    info: HardwareInfo,
+    log: List<String>,
+    busy: Boolean,
+    onForgetDevice: () -> Unit,
+) {
     var debugLog by remember { mutableStateOf(false) }
     var confirmForget by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -58,12 +91,11 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
         if (device == null) {
             Text("尚未配对设备。", color = MaterialTheme.colorScheme.error)
         } else {
-            val d = device!!
-            MetricRow("名称", d.name)
-            MetricRow("MAC（RootKey）", d.mac)
-            if (d.bleId != d.mac) MetricRow("BLE 标识", d.bleId)
-            MetricRow("型号", info.model ?: d.model ?: "—")
-            MetricRow("序列号", info.serial ?: d.sn ?: "—")
+            MetricRow("名称", device.name)
+            MetricRow("MAC（RootKey）", device.mac)
+            if (device.bleId != device.mac) MetricRow("BLE 标识", device.bleId)
+            MetricRow("型号", info.model ?: device.model ?: "—")
+            MetricRow("序列号", info.serial ?: device.sn ?: "—")
             MetricRow("配置状态", info.configCode?.toString() ?: "—")
             OutlinedButton(
                 onClick = { confirmForget = true },
@@ -127,10 +159,7 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
                 TextButton(
                     onClick = {
                         confirmForget = false
-                        scope.launch {
-                            vm.forgetDevice()
-                            onForgetDevice()
-                        }
+                        onForgetDevice()
                     },
                 ) {
                     Text("忘记", color = MaterialTheme.colorScheme.error)
@@ -139,6 +168,26 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
             dismissButton = {
                 TextButton(onClick = { confirmForget = false }) { Text("取消") }
             },
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun SettingsScreenPreview() {
+    MaterialTheme {
+        SettingsContent(
+            device = previewDevice,
+            users = previewUsers,
+            info = previewHardwareInfo,
+            log = listOf(
+                "TX 0x21 AUTH_REQ",
+                "RX 0x21 randA",
+                "TX 0x25 randB+tokenB",
+                "RX 0x29 Code 0",
+            ),
+            busy = false,
+            onForgetDevice = {},
         )
     }
 }

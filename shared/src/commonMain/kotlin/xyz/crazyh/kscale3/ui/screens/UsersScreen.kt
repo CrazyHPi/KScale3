@@ -30,10 +30,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import androidx.compose.ui.tooling.preview.Preview
+import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.components.SessionProgressDialog
 import xyz.crazyh.kscale3.ui.errorText
+import xyz.crazyh.kscale3.ui.preview.previewDevice
+import xyz.crazyh.kscale3.ui.preview.previewUsers
 import xyz.crazyh.kscale3.ui.sessionGuide
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
@@ -50,8 +54,33 @@ fun UsersScreen(
     val device by vm.device.collectAsState()
     val sessionState by vm.sessionState.collectAsState()
     val busy by vm.busy.collectAsState()
-    var pendingDelete by remember { mutableStateOf<UserProfile?>(null) }
     val scope = rememberCoroutineScope()
+
+    UsersContent(
+        users = users,
+        device = device,
+        sessionState = sessionState,
+        busy = busy,
+        onEditUser = onEditUser,
+        onRegister = vm::startRegistration,
+        onDeleteUser = { user -> scope.launch { vm.deleteUser(user) } },
+        onCancelSession = vm::cancelSession,
+    )
+}
+
+/** 无 ViewModel 的用户列表 UI（供 @Preview）。 */
+@Composable
+private fun UsersContent(
+    users: List<UserProfile>,
+    device: PairedDevice?,
+    sessionState: SessionState,
+    busy: Boolean,
+    onEditUser: (Long?) -> Unit,
+    onRegister: (UserProfile) -> Unit,
+    onDeleteUser: (UserProfile) -> Unit,
+    onCancelSession: () -> Unit,
+) {
+    var pendingDelete by remember { mutableStateOf<UserProfile?>(null) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -99,7 +128,7 @@ fun UsersScreen(
                     busy = busy,
                     canRegister = device != null,
                     onEdit = { onEditUser(user.id) },
-                    onRegister = { vm.startRegistration(user) },
+                    onRegister = { onRegister(user) },
                     onDelete = { pendingDelete = user },
                 )
             }
@@ -120,7 +149,7 @@ fun UsersScreen(
                 TextButton(
                     onClick = {
                         pendingDelete = null
-                        scope.launch { vm.deleteUser(user) }
+                        onDeleteUser(user)
                     },
                 ) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
@@ -132,7 +161,24 @@ fun UsersScreen(
         )
     }
 
-    SessionProgressDialog(state = sessionState, onCancel = { vm.cancelSession() }, onDismiss = {})
+    SessionProgressDialog(state = sessionState, onCancel = onCancelSession, onDismiss = {})
+}
+
+@Preview
+@Composable
+private fun UsersScreenPreview() {
+    MaterialTheme {
+        UsersContent(
+            users = previewUsers,
+            device = previewDevice,
+            sessionState = SessionState.Idle,
+            busy = false,
+            onEditUser = {},
+            onRegister = {},
+            onDeleteUser = {},
+            onCancelSession = {},
+        )
+    }
 }
 
 @Composable

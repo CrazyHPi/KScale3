@@ -32,8 +32,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import androidx.compose.ui.tooling.preview.Preview
 import xyz.crazyh.kscale3.di.AppContainer
 import xyz.crazyh.kscale3.domain.Measurement
+import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.domain.toEstimates
 import xyz.crazyh.kscale3.ui.components.MeasurementDetail
 import xyz.crazyh.kscale3.ui.components.MetricRow
@@ -41,6 +43,8 @@ import xyz.crazyh.kscale3.ui.components.SectionTitle
 import xyz.crazyh.kscale3.ui.components.WeightTrendChart
 import xyz.crazyh.kscale3.ui.components.rounded
 import xyz.crazyh.kscale3.ui.components.toTrendPoints
+import xyz.crazyh.kscale3.ui.preview.previewMeasurements
+import xyz.crazyh.kscale3.ui.preview.previewUsers
 import xyz.crazyh.kscale3.ui.vm.HistoryViewModel
 
 /**
@@ -55,6 +59,23 @@ fun HistoryScreen(
     val users by vm.users.collectAsState()
     val selectedId by vm.selectedUserId.collectAsState()
     val measurements by vm.measurements.collectAsState()
+
+    HistoryContent(
+        users = users,
+        selectedUserId = selectedId,
+        measurements = measurements,
+        onSelectUser = vm::selectUser,
+    )
+}
+
+/** 无 ViewModel 的历史 UI（供 @Preview）。 */
+@Composable
+private fun HistoryContent(
+    users: List<UserProfile>,
+    selectedUserId: Long?,
+    measurements: List<Measurement>,
+    onSelectUser: (Long?) -> Unit,
+) {
     var detail by remember { mutableStateOf<Measurement?>(null) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -65,14 +86,14 @@ fun HistoryScreen(
             Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
         ) {
             FilterChip(
-                selected = selectedId == null,
-                onClick = { vm.selectUser(null) },
+                selected = selectedUserId == null,
+                onClick = { onSelectUser(null) },
                 label = { Text("全部") },
             )
             users.forEach { user ->
                 FilterChip(
-                    selected = selectedId == user.id,
-                    onClick = { vm.selectUser(user.id) },
+                    selected = selectedUserId == user.id,
+                    onClick = { onSelectUser(user.id) },
                     label = { Text(user.name) },
                     modifier = Modifier.padding(start = 8.dp),
                 )
@@ -147,6 +168,19 @@ private fun MeasurementDetailDialog(
             TextButton(onClick = onDismiss) { Text("关闭") }
         },
     )
+}
+
+@Preview
+@Composable
+private fun HistoryScreenPreview() {
+    MaterialTheme {
+        HistoryContent(
+            users = previewUsers,
+            selectedUserId = null,
+            measurements = previewMeasurements,
+            onSelectUser = {},
+        )
+    }
 }
 
 private fun formatInstant(instant: Instant): String {

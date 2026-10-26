@@ -27,13 +27,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.compose.ui.tooling.preview.Preview
 import xyz.crazyh.kscale3.di.AppContainer
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.domain.UserProfileDraft
+import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.components.SessionProgressDialog
 import xyz.crazyh.kscale3.ui.components.rounded
 import xyz.crazyh.kscale3.ui.maskHuid
+import xyz.crazyh.kscale3.ui.preview.previewUsers
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 /**
@@ -49,29 +52,63 @@ fun UserEditScreen(
 ) {
     val scope = rememberCoroutineScope()
     var loaded by remember { mutableStateOf<UserProfile?>(null) }
-    var name by remember { mutableStateOf("") }
-    var male by remember { mutableStateOf(true) }
-    var age by remember { mutableStateOf("30") }
-    var height by remember { mutableStateOf("170") }
-    var goal by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var saved by remember { mutableStateOf(false) }
-
     val sessionState by vm.sessionState.collectAsState()
     val busy by vm.busy.collectAsState()
 
     LaunchedEffect(userId) {
         if (userId != null) {
-            container.userRepository.byId(userId).first()?.let { u ->
-                loaded = u
-                name = u.name
-                male = u.sex == Sex.Male
-                age = u.age.toString()
-                height = u.heightCm.toString()
-                goal = u.goalWeightKg?.rounded(1) ?: ""
-            }
+            container.userRepository.byId(userId).first()?.let { loaded = it }
         }
     }
+
+    UserEditContent(
+        isNew = userId == null,
+        loaded = loaded,
+        busy = busy,
+        sessionState = sessionState,
+        onSave = { draft ->
+            scope.launch {
+                val existing = loaded
+                if (existing == null) {
+                    container.userRepository.insert(draft)
+                } else {
+                    container.userRepository.update(
+                        existing.copy(
+                            name = draft.name,
+                            sex = draft.sex,
+                            age = draft.age,
+                            heightCm = draft.heightCm,
+                            goalWeightKg = draft.goalWeightKg,
+                        ),
+                    )
+                }
+                onBack()
+            }
+        },
+        onRegister = { loaded?.let { vm.startRegistration(it) } },
+        onBack = onBack,
+        onCancelSession = vm::cancelSession,
+    )
+}
+
+/** 无 ViewModel 的用户编辑 UI（供 @Preview）。 */
+@Composable
+private fun UserEditContent(
+    isNew: Boolean,
+    loaded: UserProfile?,
+    busy: Boolean,
+    sessionState: SessionState,
+    onSave: (UserProfileDraft) -> Unit,
+    onRegister: () -> Unit,
+    onBack: () -> Unit,
+    onCancelSession: () -> Unit,
+) {
+    var name by remember(loaded) { mutableStateOf(loaded?.name ?: "") }
+    var male by remember(loaded) { mutableStateOf(loaded?.sex != Sex.Female) }
+    var age by remember(loaded) { mutableStateOf(loaded?.age?.toString() ?: "30") }
+    var height by remember(loaded) { mutableStateOf(loaded?.heightCm?.toString() ?: "170") }
+    var goal by remember(loaded) { mutableStateOf(loaded?.goalWeightKg?.rounded(1) ?: "") }
+    var error by remember { mutableStateOf<String?>(null) }
 
     fun save() {
         val ageInt = age.toIntOrNull()
@@ -84,33 +121,15 @@ fun UserEditScreen(
             goal.isNotBlank() && goalDouble == null -> error = "目标体重格式无效"
             else -> {
                 error = null
-                scope.launch {
-                    val existing = loaded
-                    if (existing == null) {
-                        container.userRepository.insert(
-                            UserProfileDraft(
-                                name = name.trim(),
-                                sex = if (male) Sex.Male else Sex.Female,
-                                age = ageInt,
-                                heightCm = heightInt,
-                                goalWeightKg = goalDouble,
-                            ),
-                        )
-                    } else {
-                        container.userRepository.update(
-                            existing.copy(
-                                name = name.trim(),
-                                sex = if (male) Sex.Male else Sex.Female,
-                                age = ageInt,
-                                heightCm = heightInt,
-                                goalWeightKg = goalDouble,
-                            ),
-                        )
-                    }
-                    saved = true
-
-                    onBack()
-                }
+                onSave(
+                    UserProfileDraft(
+                        name = name.trim(),
+                        sex = if (male) Sex.Male else Sex.Female,
+                        age = ageInt,
+                        heightCm = heightInt,
+                        goalWeightKg = goalDouble,
+                    ),
+                )
             }
         }
     }
@@ -119,7 +138,7 @@ fun UserEditScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
         Text(
-            if (userId == null) "新建用户" else "编辑用户",
+            if (isNew) "新建用户" else "编辑用户",
             style = MaterialTheme.typography.headlineSmall,
         )
 
@@ -171,13 +190,6 @@ fun UserEditScreen(
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
-        if (saved) {
-            Text(
-                "已保存",
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
         loaded?.huid?.let {
             Text("HUID：${maskHuid(it)}（已注册）", style = MaterialTheme.typography.bodySmall)
         }
@@ -189,13 +201,13 @@ fun UserEditScreen(
         ) {
             Text("保存")
         }
-        if (userId != null && loaded != null) {
+        if (!isNew && loaded != null) {
             Button(
-                onClick = { loaded?.let { vm.startRegistration(it) } },
+                onClick = onRegister,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 enabled = !busy,
             ) {
-                Text(if (loaded?.huid != null) "重新注册到秤（生成新 HUID）" else "注册到秤（Mode 1）")
+                Text(if (loaded.huid != null) "重新注册到秤（生成新 HUID）" else "注册到秤（Mode 1）")
             }
         }
         OutlinedButton(
@@ -207,5 +219,39 @@ fun UserEditScreen(
         }
     }
 
-    SessionProgressDialog(state = sessionState, onCancel = { vm.cancelSession() }, onDismiss = {})
+    SessionProgressDialog(state = sessionState, onCancel = onCancelSession, onDismiss = {})
+}
+
+@Preview
+@Composable
+private fun UserEditScreenPreview() {
+    MaterialTheme {
+        UserEditContent(
+            isNew = false,
+            loaded = previewUsers.first(),
+            busy = false,
+            sessionState = SessionState.Idle,
+            onSave = {},
+            onRegister = {},
+            onBack = {},
+            onCancelSession = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun UserEditScreenNewPreview() {
+    MaterialTheme {
+        UserEditContent(
+            isNew = true,
+            loaded = null,
+            busy = false,
+            sessionState = SessionState.Idle,
+            onSave = {},
+            onRegister = {},
+            onBack = {},
+            onCancelSession = {},
+        )
+    }
 }
