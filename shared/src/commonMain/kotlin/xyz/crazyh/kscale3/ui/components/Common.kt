@@ -33,7 +33,6 @@ fun Double.rounded(decimals: Int): String {
     return v.toString()
 }
 
-/** 小节标题。 */
 @Composable
 fun SectionTitle(text: String) {
     Text(

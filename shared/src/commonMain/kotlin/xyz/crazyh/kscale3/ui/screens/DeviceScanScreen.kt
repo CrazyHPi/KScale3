@@ -30,7 +30,7 @@ import xyz.crazyh.kscale3.ui.vm.isLikelyScale
 
 /**
  * 设备扫描/配对屏（PLAN UI-1）：
- * 扫描列表（名称/RSSI，名称过滤 `HaigeBLE|Scale 3|HUAWEI Scale`）
+ * 扫描列表（名称/RSSI，疑似秤置顶）
  * + MAC 输入框（iOS 必填并提示"见秤身标签"；Android 可留空取扫描地址，也可手填覆盖）
  * + 保存设备 → 进入主界面。
  */

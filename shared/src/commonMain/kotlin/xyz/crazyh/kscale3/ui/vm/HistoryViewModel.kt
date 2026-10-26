@@ -25,7 +25,7 @@ class HistoryViewModel(container: AppContainer) : ViewModel() {
     private val _selectedUserId = MutableStateFlow<Long?>(null)
     val selectedUserId: StateFlow<Long?> = _selectedUserId.asStateFlow()
 
-    /** measured_at 降序（列表用）；趋势图反转即可。 */
+    /** measured_at 降序（列表用）；趋势图另行按时间升序排列。 */
     val measurements: StateFlow<List<Measurement>> =
         _selectedUserId.flatMapLatest { id ->
             if (id == null) container.measurementRepository.getAll()

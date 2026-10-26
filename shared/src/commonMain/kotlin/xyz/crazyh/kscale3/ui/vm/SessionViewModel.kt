@@ -206,7 +206,6 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         _sessionState.value = SessionState.Idle
     }
 
-    /** Result 屏保存入库。 */
     fun savePendingMeasurement() {
         val pending = _pendingResult.value ?: return
         viewModelScope.launch {

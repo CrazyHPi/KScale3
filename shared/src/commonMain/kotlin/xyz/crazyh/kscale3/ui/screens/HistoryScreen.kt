@@ -90,7 +90,6 @@ fun HistoryScreen(
         } else {
             WeightTrendChart(points = measurements.toTrendPoints())
 
-            // hide history list when no measurements
             SectionTitle("测量列表")
             Text(
                 "点击卡片查看详细数据",

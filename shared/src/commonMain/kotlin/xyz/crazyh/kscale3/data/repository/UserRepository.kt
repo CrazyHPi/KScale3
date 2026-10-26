@@ -5,7 +5,7 @@ import kotlinx.datetime.Instant
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.domain.UserProfileDraft
 
-/** 用户档案仓库（实现见后续阶段；对应 `user_profile` 表）。 */
+/** 用户档案仓库（对应 `user_profile` 表）。 */
 interface UserRepository {
     fun getAll(): Flow<List<UserProfile>>
 

@@ -196,7 +196,6 @@ fun WeightTrendChart(
     }
 }
 
-/** 趋势点（时间 + 体重）。 */
 data class TrendPoint(val at: Instant, val weightKg: Double)
 
 /** 列表 → 趋势点（时间升序）。 */

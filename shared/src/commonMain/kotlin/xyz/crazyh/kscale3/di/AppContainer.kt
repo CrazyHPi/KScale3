@@ -33,7 +33,7 @@ class AppContainer(private val driverFactory: DriverFactory) {
 
     val deviceRepository: DeviceRepository by lazy { SqlDeviceRepository(database) }
 
-    /** 扫描（名称过滤 `HaigeBLE|Scale 3|HUAWEI Scale` 由调用方约定）。 */
+    /** 扫描（疑似秤置顶由 UI 层排序，不按名称过滤）。 */
     fun createBleScanner(): BleScanner = KableBleScanner(Scanner { })
 
     /** 按标识建外设（Android=物理 MAC，iOS=CoreBluetooth UUID）。 */

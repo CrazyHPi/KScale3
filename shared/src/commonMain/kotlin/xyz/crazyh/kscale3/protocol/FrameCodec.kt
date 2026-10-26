@@ -71,7 +71,6 @@ sealed interface FeedResult {
     data class Rejected(val reason: RejectReason) : FeedResult
 }
 
-/** 拒收原因。 */
 enum class RejectReason {
     /** 帧不足 5 字节 */
     TooShort,

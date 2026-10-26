@@ -9,7 +9,6 @@ sealed interface Route {
     @Serializable
     data object DeviceScan : Route
 
-    /** 用户列表 */
     @Serializable
     data object Users : Route
 
@@ -17,19 +16,15 @@ sealed interface Route {
     @Serializable
     data class UserEdit(val userId: Long? = null) : Route
 
-    /** 称重 */
     @Serializable
     data object WeighIn : Route
 
-    /** 测量结果 */
     @Serializable
     data object Result : Route
 
-    /** 历史与趋势 */
     @Serializable
     data object History : Route
 
-    /** 设置 */
     @Serializable
     data object Settings : Route
 }
