@@ -25,3 +25,5 @@ scale_config.json
 *.btsnoop.log
 *.pcap
 *.pcapng
+
+.claude
