@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -19,6 +20,7 @@ import xyz.crazyh.kscale3.di.AppContainer
 import xyz.crazyh.kscale3.domain.MeasurementResult
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
+import xyz.crazyh.kscale3.domain.WeightUnit
 import xyz.crazyh.kscale3.domain.toDraft
 import xyz.crazyh.kscale3.domain.toMeasurement
 import xyz.crazyh.kscale3.protocol.isValidMacAddress
@@ -28,6 +30,7 @@ import xyz.crazyh.kscale3.session.ScaleSession
 import xyz.crazyh.kscale3.session.SessionException
 import xyz.crazyh.kscale3.session.SessionOptions
 import xyz.crazyh.kscale3.session.SessionState
+import xyz.crazyh.kscale3.ui.errorText
 
 /** Result 屏待保存的测量（归属用户 + 会话产物）。 */
 data class PendingMeasurement(val userId: Long, val result: MeasurementResult)
@@ -147,7 +150,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
      * 清空后 [deviceState] 变为 [DeviceState.None]，调用方跳回扫描配对页。
      */
     suspend fun forgetDevice() {
-        if (_busy.value) return
+        if (_busy.value || _unitBusy.value) return
         container.deviceRepository.clear()
         _hardwareInfo.value = HardwareInfo()
     }
@@ -206,6 +209,71 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         _sessionState.value = SessionState.Idle
     }
 
+    // ---- 秤显示单位（TECH.md §7.3） ----
+
+    /** 最近一次读/写到的秤显示单位；null = 尚未与秤通信过。 */
+    val weightUnit: StateFlow<WeightUnit?> =
+        _hardwareInfo.map { it.weightUnit }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** 单位读写的进行中标记（设置栏禁用 + 进度提示）。 */
+    private val _unitBusy = MutableStateFlow(false)
+    val unitBusy: StateFlow<Boolean> = _unitBusy.asStateFlow()
+
+    private val _unitError = MutableStateFlow<String?>(null)
+    val unitError: StateFlow<String?> = _unitError.asStateFlow()
+
+    /** 任一会话（称重/注册/单位读写）进行中——UI 用它禁用入口，避免同一时刻两条 BLE 会话。 */
+    val busyOrUnit: StateFlow<Boolean> =
+        combine(_busy, _unitBusy) { session, unit -> session || unit }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /**
+     * 从秤读取当前显示单位（进入设置屏时调用；未配对/忙时忽略）。
+     * 失败只落帧日志，不弹错误条——进屏自动查询不应因秤未开机而打扰用户。
+     */
+    fun refreshWeightUnit() {
+        val device = device.value ?: return
+        runUnitOperation(device, reportError = false) { it.readWeightUnit(device.mac) }
+    }
+
+    /** 设置秤显示单位（成功后 [weightUnit] 更新为 [unit]；失败显示 [unitError]）。 */
+    fun setWeightUnit(unit: WeightUnit) {
+        val device = device.value ?: return
+        runUnitOperation(device, reportError = true) { it.setWeightUnit(unit, device.mac) }
+    }
+
+    private fun runUnitOperation(
+        device: PairedDevice,
+        reportError: Boolean,
+        block: suspend (ScaleSession) -> Unit,
+    ) {
+        if (_unitBusy.value || _busy.value) return
+        _unitBusy.value = true
+        _unitError.value = null
+        viewModelScope.launch {
+            val s = container.createScaleSession(
+                container.createBlePeripheral(device.bleId),
+                logOptions()
+            )
+            session = s
+            // 单位读写结果经 hardwareInfo 回传（与称重会话同一出口）
+            val infoJob = launch { s.hardwareInfo.collect { _hardwareInfo.value = it } }
+            try {
+                block(s)
+            } catch (e: SessionException) {
+                if (reportError) _unitError.value = errorText(e.error)
+                else println("[KScale3] unit read failed: ${e.message}")
+            } finally {
+                // 收集是异步的：先同步最后一次 hardwareInfo（单位结果），避免 cancel 时丢掉
+                _hardwareInfo.value = s.hardwareInfo.value
+                infoJob.cancel()
+                _unitBusy.value = false
+                session = null
+            }
+        }
+    }
+
     fun savePendingMeasurement() {
         val pending = _pendingResult.value ?: return
         viewModelScope.launch {
@@ -220,14 +288,11 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     private fun launchOperation(block: suspend (ScaleSession, String) -> Unit) {
-        if (_busy.value) return
+        if (_busy.value || _unitBusy.value) return
         val device = device.value ?: return // 未配对设备：UI 层禁用入口
         // 帧日志进 VM（SettingsScreen 调试屏消费）+ println 落 logcat 便于真机诊断
         // （日志仅帧 hex——载荷均加密、MAC 不上线）
-        val options = SessionOptions(onLog = { line ->
-            println("[KScale3] $line")
-            _frameLog.update { (it + line).takeLast(FRAME_LOG_CAPACITY) }
-        })
+        val options = logOptions()
         val s = container.createScaleSession(container.createBlePeripheral(device.bleId), options)
         session = s
         println("[KScale3] session start: mac=${device.mac} bleId=${device.bleId}")
@@ -254,6 +319,12 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     private fun now(): Instant = kotlin.time.Clock.System.now()
+
+    /** 会话选项：帧日志进 VM（调试屏）+ println 落 logcat（日志仅帧 hex，MAC 不上线）。 */
+    private fun logOptions(): SessionOptions = SessionOptions(onLog = { line ->
+        println("[KScale3] $line")
+        _frameLog.update { (it + line).takeLast(FRAME_LOG_CAPACITY) }
+    })
 
     private companion object {
         const val FRAME_LOG_CAPACITY: Int = 500

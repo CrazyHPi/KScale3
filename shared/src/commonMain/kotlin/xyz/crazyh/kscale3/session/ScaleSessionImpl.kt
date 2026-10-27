@@ -25,6 +25,7 @@ import xyz.crazyh.kscale3.domain.MeasurementResult
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.domain.UserProfileDraft
+import xyz.crazyh.kscale3.domain.WeightUnit
 import xyz.crazyh.kscale3.protocol.Frame
 import xyz.crazyh.kscale3.protocol.FrameMagic
 import xyz.crazyh.kscale3.protocol.MacAddress
@@ -34,6 +35,7 @@ import xyz.crazyh.kscale3.protocol.crypto.secureRandomBytes
 import xyz.crazyh.kscale3.protocol.packets.BiaMeasurement
 import xyz.crazyh.kscale3.protocol.packets.TareResponse
 import xyz.crazyh.kscale3.protocol.packets.UserProfilePacket
+import xyz.crazyh.kscale3.protocol.packets.WeightUnitPacket
 import xyz.crazyh.kscale3.protocol.toHex
 import kotlin.math.roundToInt
 
@@ -82,6 +84,42 @@ class ScaleSessionImpl(
         return result
     }
 
+    override suspend fun readWeightUnit(mac: MacAddress): WeightUnit =
+        runUnitOperation(mac) { io ->
+            // 通用查询 `db0300c140`，同样是 Write Command（无响应写，TECH.md §7.3）
+            io.writeRaw(
+                GattUuids.WEIGHT_UNIT_QUERY,
+                ProtocolConstants.QUERY_ARM,
+                withResponse = false
+            )
+            val frame = io.await(GattUuids.WEIGHT_UNIT_QUERY, "weightUnit", options.timing.unit)
+            val code = WeightUnitPacket.replyCode(frame.payload)
+            val unit = code?.let(WeightUnit::fromCode)
+                ?: throw SessionException(SessionError.UnexpectedReply("weightUnit", code))
+            _hardwareInfo.value = _hardwareInfo.value.copy(weightUnit = unit)
+            unit
+        }
+
+    override suspend fun setWeightUnit(unit: WeightUnit, mac: MacAddress) {
+        runUnitOperation(mac) { io ->
+            // 无响应写（TECH.md §7.3）；确认是同特征的 Indication `BD 04 00 00`
+            io.writeRaw(
+                GattUuids.SERIAL,
+                WeightUnitPacket.setFrame(unit.code),
+                withResponse = false
+            )
+            val frame = io.await(GattUuids.SERIAL, "weightUnitSet", options.timing.unit)
+            val code = WeightUnitPacket.replyCode(frame.payload)
+            if (code != 0) throw SessionException(
+                SessionError.UnexpectedReply(
+                    "weightUnitSet",
+                    code
+                )
+            )
+            _hardwareInfo.value = _hardwareInfo.value.copy(weightUnit = unit)
+        }
+    }
+
     override fun close() {
         activeJob?.cancel()
     }
@@ -115,71 +153,82 @@ class ScaleSessionImpl(
 
     private class SessionOutput(val result: MeasurementResult?)
 
-    private suspend fun runOperation(mac: MacAddress, mode: Mode): SessionOutput {
+    /**
+     * 连接 → 握手 → [block] → 拆除（断连 watcher、帧日志、NonCancellable 断连）。
+     * 失败原因不在此映射状态：配对流程的"Code 0 后断连仍算成功"需要调用方判断。
+     */
+    private suspend fun <T> withConnectedSession(
+        mac: MacAddress,
+        block: suspend (workKey: ByteArray, io: FrameIo) -> T,
+    ): T {
         val rootKey = try {
             ScaleCrypto.deriveRootKey(mac)
         } catch (e: IllegalArgumentException) {
             throw SessionException(SessionError.MacInvalid, cause = e)
         }
 
+        return coroutineScope {
+            activeJob = coroutineContext[Job]
+            _state.value = SessionState.Connecting
+            try {
+                peripheral.connect()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw SessionException(SessionError.Disconnected, cause = e)
+            }
+
+            // mid-session disconnect watcher (true -> false counts as disconnect)
+            val watcher = launch {
+                peripheral.isConnected.dropWhile { !it }.first { !it }
+                throw SessionException(SessionError.Disconnected)
+            }
+            val io = FrameIo(peripheral, this, options.onLog)
+            val collectors = io.start()
+
+            try {
+                delay(options.timing.settle)
+                block(handshake(rootKey, io), io)
+            } finally {
+                // stop background children BEFORE disconnecting: otherwise the watcher
+                // sees the teardown disconnect and poisons a successful run with Disconnected
+                watcher.cancel()
+                collectors.forEach { it.cancel() }
+                activeJob = null
+                withContext(NonCancellable) {
+                    runCatching { peripheral.disconnect() }
+                }
+            }
+        }
+    }
+
+    private suspend fun runOperation(mac: MacAddress, mode: Mode): SessionOutput {
         // Reaching this point after measurementFlow() means 0x31 Code 0 confirmed the profile.
         // Mode 1 failures after that do not undo the flash registration (see pair() KDoc).
         var profileConfirmed = false
 
         return try {
-            coroutineScope {
-                activeJob = coroutineContext[Job]
-                _state.value = SessionState.Connecting
-                try {
-                    peripheral.connect()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    throw SessionException(SessionError.Disconnected, cause = e)
+            withConnectedSession(mac) { workKey, io ->
+                val profileWeightDg = when (mode) {
+                    is Mode.Pairing -> bindingPreamble(workKey, mode.huid, io)
+                    is Mode.Routine -> mode.fallbackWeightDg
                 }
 
-                // mid-session disconnect watcher (true -> false counts as disconnect)
-                val watcher = launch {
-                    peripheral.isConnected.dropWhile { !it }.first { !it }
-                    throw SessionException(SessionError.Disconnected)
-                }
-                val io = FrameIo(peripheral, this, options.onLog)
-                val collectors = io.start()
+                // hard for both modes up to 0x31 Code 0 (registration/ownership proven)
+                measurementFlow(workKey, mode, profileWeightDg, io) { profileConfirmed = true }
 
-                try {
-                    delay(options.timing.settle)
-
-                    val workKey = handshake(rootKey, io)
-                    val profileWeightDg = when (mode) {
-                        is Mode.Pairing -> bindingPreamble(workKey, mode.huid, io)
-                        is Mode.Routine -> mode.fallbackWeightDg
-                    }
-
-                    // hard for both modes up to 0x31 Code 0 (registration/ownership proven)
-                    measurementFlow(workKey, mode, profileWeightDg, io) { profileConfirmed = true }
-
-                    // BIA tail: Mode 1 failures do not undo the flash registration
-                    val result = try {
-                        biaTail(workKey, mode, io)
-                    } catch (e: SessionException) {
-                        if (mode is Mode.Pairing) {
-                            options.onLog?.invoke("pairing BIA tail failed (${e.error}); registration kept")
-                            null
-                        } else {
-                            throw e
-                        }
-                    }
-                    SessionOutput(result)
-                } finally {
-                    // stop background children BEFORE disconnecting: otherwise the watcher
-                    // sees the teardown disconnect and poisons a successful run with Disconnected
-                    watcher.cancel()
-                    collectors.forEach { it.cancel() }
-                    activeJob = null
-                    withContext(NonCancellable) {
-                        runCatching { peripheral.disconnect() }
+                // BIA tail: Mode 1 failures do not undo the flash registration
+                val result = try {
+                    biaTail(workKey, mode, io)
+                } catch (e: SessionException) {
+                    if (mode is Mode.Pairing) {
+                        options.onLog?.invoke("pairing BIA tail failed (${e.error}); registration kept")
+                        null
+                    } else {
+                        throw e
                     }
                 }
+                SessionOutput(result)
             }
         } catch (e: SessionException) {
             // A child coroutine failure (the disconnect watcher) bypasses the inner try/catch:
@@ -192,6 +241,19 @@ class ScaleSessionImpl(
             _state.value = SessionState.Failed(e.error)
             throw e
         }
+    }
+
+    /**
+     * 单位控制：握手后执行一次读/写；结束后状态回到 [SessionState.Idle]（不进称重屏的错误条）。
+     * 会话骨架与配对/称重共用（断连 watcher、帧日志、NonCancellable 断连）。
+     */
+    private suspend fun <T> runUnitOperation(
+        mac: MacAddress,
+        block: suspend (io: FrameIo) -> T,
+    ): T = try {
+        withConnectedSession(mac) { _, io -> block(io) }
+    } finally {
+        if (_state.value != SessionState.Idle) _state.value = SessionState.Idle
     }
 
     // ---- common handshake (0x21/0x25/0x29/0xD7) ----

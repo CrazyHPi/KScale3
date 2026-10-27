@@ -28,9 +28,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import androidx.compose.ui.tooling.preview.Preview
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.session.SessionState
@@ -53,7 +53,7 @@ fun UsersScreen(
     val users by vm.users.collectAsState()
     val device by vm.device.collectAsState()
     val sessionState by vm.sessionState.collectAsState()
-    val busy by vm.busy.collectAsState()
+    val busy by vm.busyOrUnit.collectAsState()
     val scope = rememberCoroutineScope()
 
     UsersContent(

@@ -31,6 +31,8 @@ data class SessionTiming(
     val timeSync: Duration = 2.seconds,
     /** 0x5A/0x7A/0x62/0x8F 查询回复（软：超时继续）。 */
     val query: Duration = 500.milliseconds,
+    /** 体重单位设置/查询回复（TECH.md §7.3；同参考实现 2s）。 */
+    val unit: Duration = 2.seconds,
     /** 0x31 首发回复（硬：Code 是归属确认）。 */
     val profileFirst: Duration = 5.seconds,
     /** 0x31 刷新回复（软：超时继续，同 Python）。 */

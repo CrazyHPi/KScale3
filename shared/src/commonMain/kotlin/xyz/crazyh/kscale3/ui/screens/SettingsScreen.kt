@@ -1,5 +1,6 @@
 package xyz.crazyh.kscale3.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,10 +13,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,9 +32,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
+import xyz.crazyh.kscale3.domain.WeightUnit
 import xyz.crazyh.kscale3.session.HardwareInfo
 import xyz.crazyh.kscale3.ui.components.MetricRow
 import xyz.crazyh.kscale3.ui.components.SectionTitle
+import xyz.crazyh.kscale3.ui.components.SettingEntry
 import xyz.crazyh.kscale3.ui.maskHuid
 import xyz.crazyh.kscale3.ui.preview.previewDevice
 import xyz.crazyh.kscale3.ui.preview.previewHardwareInfo
@@ -40,7 +45,7 @@ import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 /**
  * 设置屏（PLAN UI-6）：设备信息（MAC/型号/序列号 + 用户 HUID 打码）、
- * 调试开关（帧日志屏，默认关；日志仅帧 hex——载荷均加密、MAC 不上线）。
+ * 秤显示单位（TECH.md §7.3）、调试开关（帧日志屏，默认关；日志仅帧 hex——载荷均加密、MAC 不上线）。
  * "重新注册"入口在用户管理页（每档案独立 HUID）。
  *
  * @param onForgetDevice 忘记设备并清库后回调（调用方跳回扫描配对页）
@@ -51,8 +56,16 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
     val users by vm.users.collectAsState()
     val info by vm.hardwareInfo.collectAsState()
     val log by vm.frameLog.collectAsState()
-    val busy by vm.busy.collectAsState()
+    val busy by vm.busyOrUnit.collectAsState()
+    val weightUnit by vm.weightUnit.collectAsState()
+    val unitBusy by vm.unitBusy.collectAsState()
+    val unitError by vm.unitError.collectAsState()
     val scope = rememberCoroutineScope()
+
+    // 进入设置屏时向秤查询当前单位（未配对/会话进行中时 VM 内部忽略）
+    LaunchedEffect(device?.id) {
+        if (device != null) vm.refreshWeightUnit()
+    }
 
     SettingsContent(
         device = device,
@@ -60,6 +73,10 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
         info = info,
         log = log,
         busy = busy,
+        weightUnit = weightUnit,
+        unitBusy = unitBusy,
+        unitError = unitError,
+        onSetWeightUnit = vm::setWeightUnit,
         onForgetDevice = {
             scope.launch {
                 vm.forgetDevice()
@@ -77,10 +94,15 @@ private fun SettingsContent(
     info: HardwareInfo,
     log: List<String>,
     busy: Boolean,
+    weightUnit: WeightUnit?,
+    unitBusy: Boolean,
+    unitError: String?,
+    onSetWeightUnit: (WeightUnit) -> Unit,
     onForgetDevice: () -> Unit,
 ) {
     var showDebugInfo by remember { mutableStateOf(false) }
     var confirmForget by remember { mutableStateOf(false) }
+    var showUnitPicker by remember { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -99,15 +121,34 @@ private fun SettingsContent(
 //            MetricRow("型号", info.model ?: device.model ?: "—")
 //            MetricRow("序列号", info.serial ?: device.sn ?: "—")
 //            MetricRow("配置状态", info.configCode?.toString() ?: "—")
-            OutlinedButton(
-                onClick = { confirmForget = true },
-                enabled = !busy,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                modifier = Modifier.padding(top = 12.dp).align(Alignment.CenterHorizontally),
-            ) {
-                Text("忘记已配对的秤")
-            }
         }
+
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+        // 秤显示单位（TECH.md §7.3：0x5A 设置 / 7e6dbc73 查询）
+        SettingEntry(
+            name = "秤显示单位",
+            value = when {
+                unitBusy -> "连接秤..."
+                weightUnit != null -> weightUnit.label
+                else -> null
+            },
+            // 读写单位本身也在 busy 内（busyOrUnit）
+            enabled = device != null && !busy,
+        ) {
+            showUnitPicker = true
+        }
+        unitError?.let {
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
+        //todo device reset, not planned yet
+
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
         SectionTitle("已注册用户")
         val registered = users.filter { it.huid != null }
@@ -120,6 +161,17 @@ private fun SettingsContent(
                     if (showDebugInfo) user.huid!! else maskHuid(user.huid!!)
                 )
             }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+        OutlinedButton(
+            onClick = { confirmForget = true },
+            enabled = !busy,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        ) {
+            Text("忘记已配对的秤")
         }
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
@@ -150,6 +202,40 @@ private fun SettingsContent(
                 }
             }
         }
+    }
+
+    if (showUnitPicker) {
+        AlertDialog(
+            onDismissRequest = { showUnitPicker = false },
+            title = { Text("秤显示单位") },
+            text = {
+                Column {
+                    WeightUnit.entries.forEach { unit ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable {
+                                    showUnitPicker = false
+                                    onSetWeightUnit(unit)
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = unit == weightUnit,
+                                onClick = {
+                                    showUnitPicker = false
+                                    onSetWeightUnit(unit)
+                                },
+                            )
+                            Text(unit.label, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showUnitPicker = false }) { Text("取消") }
+            },
+        )
     }
 
     if (confirmForget) {
@@ -195,6 +281,10 @@ private fun SettingsScreenPreview() {
                 "RX 0x29 Code 0",
             ),
             busy = false,
+            weightUnit = WeightUnit.Kg,
+            unitBusy = false,
+            unitError = null,
+            onSetWeightUnit = {},
             onForgetDevice = {},
         )
     }

@@ -188,6 +188,11 @@ internal class TestScale(
         sendStatus(GattUuids.USER_PROFILE, code)
         return packet
     }
+
+    /** Reply to a unit query (`BD 04 00 <code>`) on [uuid] (downstream MODBUS CRC). */
+    fun sendUnitReply(uuid: String, code: Int) {
+        sendFrames(uuid, byteArrayOf(code.toByte()), FrameMagic.PlainDownstream)
+    }
 }
 
 // ---- frame / payload builders ----

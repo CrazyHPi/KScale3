@@ -55,8 +55,12 @@ internal class FrameIo(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    // 订阅流失败（多为断连）→ 失败整个会话
-                    throw SessionException(SessionError.Disconnected, cause = e)
+                    // 可选特征（如单位查询）订阅失败不致命：对应步骤超时即可
+                    if (uuid in ESSENTIAL_UUIDS) {
+                        // 订阅流失败（多为断连）→ 失败整个会话
+                        throw SessionException(SessionError.Disconnected, cause = e)
+                    }
+                    onLog?.invoke("[RX $uuid] subscribe failed (optional, ignored): ${e.message}")
                 }
             }
         }
@@ -155,6 +159,7 @@ internal class FrameIo(
             GattUuids.USER_PROFILE,
             GattUuids.TIME_SYNC,
             GattUuids.SERIAL,
+            GattUuids.WEIGHT_UNIT_QUERY,
             GattUuids.CONFIG,
             GattUuids.MODEL,
             GattUuids.OFFLINE_HISTORY,
@@ -165,5 +170,8 @@ internal class FrameIo(
             GattUuids.SENTINEL,
             GattUuids.CAPABILITIES_RSP,
         )
+
+        /** 订阅失败即判定断连的特征；其余（如单位查询）失败只记日志。 */
+        val ESSENTIAL_UUIDS = FRAMED_UUIDS.toSet() - GattUuids.WEIGHT_UNIT_QUERY
     }
 }

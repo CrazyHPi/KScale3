@@ -26,8 +26,11 @@ object GattUuids {
     /** 0x52 时间同步（明文；⚠️ 私有 8B 布局，见 TimeSyncPacket） */
     const val TIME_SYNC = "00002a2b-0000-1000-8000-00805f9b34fb"
 
-    /** 0x5A 序列号查询（明文） */
+    /** 0x5A 序列号查询（明文）；**同一特征也用于设置体重单位**（TECH.md §7.3） */
     const val SERIAL = "11872f15-a91d-49da-ac89-5107284f3425"
+
+    /** 体重单位查询（TECH.md §7.3，官方 App 实测 handle 0x4B；旧 GATT 表未列） */
+    const val WEIGHT_UNIT_QUERY = "7e6dbc73-42e7-45b9-a6ec-6aa2d7834695"
 
     /** 0x62 设备配置状态（恒回 Code 1） */
     const val CONFIG = "bfc36f6e-4150-4a4b-9052-3d359e52962e"

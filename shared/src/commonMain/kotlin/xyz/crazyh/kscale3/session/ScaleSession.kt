@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 import xyz.crazyh.kscale3.domain.MeasurementResult
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.domain.UserProfileDraft
+import xyz.crazyh.kscale3.domain.WeightUnit
 import xyz.crazyh.kscale3.protocol.MacAddress
 
 /**
@@ -37,6 +38,18 @@ interface ScaleSession {
      */
     suspend fun measure(user: UserProfile, mac: MacAddress): MeasurementResult
 
+    /**
+     * 读取秤当前显示单位（TECH.md §7.3：向 `7e6dbc73` 写通用查询，回 `BD 04 00 <unit>`）。
+     * 需连接（内部完成握手）；失败抛 [SessionException]。
+     */
+    suspend fun readWeightUnit(mac: MacAddress): WeightUnit
+
+    /**
+     * 设置秤显示单位（TECH.md §7.3：向 0x5A 写 `DB 04 00 <unit>`，等 status 0 确认）。
+     * 成功后 [hardwareInfo] 的 [HardwareInfo.weightUnit] 即为 [unit]；失败抛 [SessionException]。
+     */
+    suspend fun setWeightUnit(unit: WeightUnit, mac: MacAddress)
+
     /** 中止进行中的会话（取消 pair/measure 协程并断连）。 */
     fun close()
 }
@@ -62,4 +75,6 @@ data class HardwareInfo(
     val configCode: Int? = null,
     /** 0x8F 离线历史回复（hex 原文，v1 不解码） */
     val historyRaw: String? = null,
+    /** 秤当前显示单位（0x5A / 单位查询；仅设置或查询单位后才有值） */
+    val weightUnit: WeightUnit? = null,
 )
