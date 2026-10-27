@@ -24,9 +24,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import androidx.compose.ui.tooling.preview.Preview
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.session.HardwareInfo
@@ -79,7 +79,7 @@ private fun SettingsContent(
     busy: Boolean,
     onForgetDevice: () -> Unit,
 ) {
-    var debugLog by remember { mutableStateOf(false) }
+    var showDebugInfo by remember { mutableStateOf(false) }
     var confirmForget by remember { mutableStateOf(false) }
 
     Column(
@@ -92,11 +92,13 @@ private fun SettingsContent(
             Text("尚未配对设备。", color = MaterialTheme.colorScheme.error)
         } else {
             MetricRow("名称", device.name)
-            MetricRow("MAC（RootKey）", device.mac)
+            MetricRow("MAC 地址", device.mac)
             if (device.bleId != device.mac) MetricRow("BLE 标识", device.bleId)
-            MetricRow("型号", info.model ?: device.model ?: "—")
-            MetricRow("序列号", info.serial ?: device.sn ?: "—")
-            MetricRow("配置状态", info.configCode?.toString() ?: "—")
+
+            // hide extra info for now, not needed i think
+//            MetricRow("型号", info.model ?: device.model ?: "—")
+//            MetricRow("序列号", info.serial ?: device.sn ?: "—")
+//            MetricRow("配置状态", info.configCode?.toString() ?: "—")
             OutlinedButton(
                 onClick = { confirmForget = true },
                 enabled = !busy,
@@ -113,22 +115,27 @@ private fun SettingsContent(
             Text("暂无——可在「用户」页注册到秤。", style = MaterialTheme.typography.bodySmall)
         } else {
             registered.forEach { user ->
-                MetricRow(user.name, maskHuid(user.huid!!))
+                MetricRow(
+                    user.name,
+                    if (showDebugInfo) user.huid!! else maskHuid(user.huid!!)
+                )
             }
         }
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("调试帧日志", modifier = Modifier.weight(1f))
-            Switch(checked = debugLog, onCheckedChange = { debugLog = it })
+            Text("调试模式", modifier = Modifier.weight(1f))
+            Switch(checked = showDebugInfo, onCheckedChange = { showDebugInfo = it })
         }
-        Text(
-            "日志 仅显示帧 (hex)",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (debugLog) {
+
+        if (showDebugInfo) {
+            Text(
+                "日志 仅显示帧 (hex)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
             Column(
                 Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
@@ -151,8 +158,9 @@ private fun SettingsContent(
             title = { Text("忘记已配对的秤？") },
             text = {
                 Text(
-                    "将清除本机保存的秤，再次连接需要重新配对。\n" +
-                            "用户档案与历史体重不会被清楚。",
+                    "将清除本机保存的秤\n" +
+                            "再次连接需要重新配对\n" +
+                            "用户档案与历史体重不会被清楚",
                 )
             },
             confirmButton = {
