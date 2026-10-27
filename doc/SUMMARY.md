@@ -10,26 +10,26 @@
 | 文件 | 角色 | 内容 |
 | :--- | :--- | :--- |
 | [TECH.md](TECH.md) | 协议规格（逆向文档） | 加密体系、帧格式、GATT 表、状态码、两种工作模式的完整时序、报文字段定义 |
-| [scale3.py](scale3.py) | 参考实现（Python） | 基于 `bleak` + `cryptography` 的独立可运行驱动，765 行，无厂商账号依赖 |
+| [scale3.py](scale3.py) | 参考实现（Python） | 基于 `bleak` + `cryptography` 的独立可运行驱动，863 行，无厂商账号依赖 |
 
 `scale3.py` 是 TECH.md 的忠实落地，两者的算法、常量、报文结构完全一致。
 
 ---
 
-## 2. 核心加密体系（TECH.md §2 / scale3.py L77-L114）
+## 2. 核心加密体系（TECH.md §2 / scale3.py L87-L124）
 
 - **静态常量**：`CAK`、`WB1033`、`WB2033`（各 16 字节）。
-- **RootKey 派生**（`derive_root_key`，L102）：由秤的**真实物理 MAC** 确定性派生
+- **RootKey 派生**（`derive_root_key`，L112）：由秤的**真实物理 MAC** 确定性派生
   `SHA256( (SHA256((WB1033<<4)^WB2033)>>6) ^ (MAC去冒号+"0000") )` 取前 16 字节。
   ⚠️ macOS CoreBluetooth 只暴露随机 UUID，必须使用秤身标签上的真实 MAC，否则握手"看似成功"但 BIA 数据解密为乱码。
-- **双向认证 token**（`generate_auth_tokens`，L110）：双重 HMAC-SHA256，对 `randAB = randA‖randB`：
+- **双向认证 token**（`generate_auth_tokens`，L120）：双重 HMAC-SHA256，对 `randAB = randA‖randB`：
   - `tokenB = HMAC(HMAC(CAK+"1123", randAB), randAB)`（客户端 → 秤）
   - `tokenA = HMAC(HMAC(CAK+"9856", randAB), randAB)`（秤 → 客户端）
   - **key/data 顺序不可颠倒**；tokenB 错误会表现为 0x31 持续返回 Code 2。
 - **载荷加密**：AES-128-CTR，格式 `[16B 随机 IV] + 密文`，会话 WorkKey 由客户端每次随机生成，用 RootKey 加密后经 0x29 下发。
 - **握手关键澄清**：0x29 返回 Code 0 仅表示 WorkKey 安装成功，**不代表认证通过**；认证的真正凭据是 tokenB。
 
-## 3. 帧协议（TECH.md §3 / scale3.py L117-L158）
+## 3. 帧协议（TECH.md §3 / scale3.py L127-L168）
 
 ```
 +--------+--------+------------------+-----------------+-----------------+
@@ -39,10 +39,10 @@
 
 - Magic：`0xDB` 明文上行 · `0xDC` 加密上行 · `0xBD` 明文下行 · `0xCD` 加密下行。
 - Length = 载荷长 + 3；Sequence = `((总帧数-1)<<4) | 帧索引`；载荷按 15 字节分片。
-- CRC-16 CCITT（256 项查表法，CRC_TABLE 见 scale3.py L82）。
+- CRC-16 CCITT（256 项查表法，CRC_TABLE 见 scale3.py L92）。
 - 实现对应：`build_framed_chunks`（分片打包+校验）、`FrameReassembler`（重组）。
 
-## 4. GATT 特征一览（TECH.md §4，scale3.py L60-L75）
+## 4. GATT 特征一览（TECH.md §4，scale3.py L60-L79）
 
 **必须按 UUID 寻址**（macOS 会重排 handle）：
 
@@ -55,7 +55,8 @@
 | `42596cbe-…1c9174` | 0x2D | HUID 写闪存 / 皮重称量 | AES(WorkKey) |
 | `8cc61d7d-…63592e` | 0x31 | 用户档案 & 提交 | AES(WorkKey) |
 | `00002a2b-…5f9b34fb` | 0x52 | 时间同步（标准 GATT） | 明文 |
-| `11872f15-…84f3425` | 0x5A | 序列号查询 | 明文 |
+| `11872f15-…84f3425` | 0x5A | 序列号查询 / **单位设置** | 明文 |
+| `7e6dbc73-…d7834695` | — | **单位查询**（实测 handle 0x4B） | 明文 |
 | `bfc36f6e-…e52962e` | 0x62 | 设备配置状态（恒回 1） | 明文 |
 | `426f058d-…a08bf` | 0x7A | 硬件型号（如 M00F7） | 明文 |
 | `0212f42a-…cc71a4` | 0x8F | 离线历史记录 | 明文 |
@@ -63,6 +64,8 @@
 | `0000fe01-…5f9b34fb` | 0xD7 | 能力上报（无响应写） | 明文 |
 | `0000fe02-…5f9b34fb` | 0xDA | 能力响应 | 明文 |
 | `ba216311-…e62293e` | Sentinel | 状态/事件通知 | 明文 |
+
+> 单位设置/查询为 2026-10-28 官方 App HCI 抓包实测；handle 依协议栈重排，必须按 UUID 寻址。
 
 通用查询/武装命令固定为 `db0300c140`（单帧空载荷）；能力上报为 `5a000500013701001ca9`。
 
@@ -99,7 +102,7 @@
 
 ## 7. 报文定义（TECH.md §7）
 
-### 7.1 用户档案（0x31，明文 69 字节 → `build_user_info_profile`，scale3.py L161）
+### 7.1 用户档案（0x31，明文 69 字节 → `build_user_info_profile`，scale3.py L171）
 
 | 偏移 | 长 | 格式 | 字段 |
 | :-- | :- | :--- | :--- |
@@ -111,7 +114,7 @@
 | 66 | 2 | uint16_le | 体重 ×100（kg，配对时用 0x2D 皮重） |
 | 68 | 1 | uint8 | 类型：0=档案/测量，2=测后提交 |
 
-### 7.2 实时 BIA 流（0x97，解密后 38 字节 → `on_meas_rx`，scale3.py L620）
+### 7.2 实时 BIA 流（0x97，解密后 38 字节 → `on_meas_rx`，scale3.py L630）
 
 | 偏移 | 格式 | 单位 | 字段 |
 | :-- | :--- | :-- | :--- |
@@ -124,39 +127,62 @@
 
 > 阻抗为原始计数；换算成 Ω 或派生指标（肌肉量、水分等）需要厂商 BIA 模型，超出本项目范围。
 
+### 7.3 体重单位设置 / 查询（0x5A + 7e6dbc73，2026-10-28 实测）
+
+官方 App 可把秤显示单位切为 斤 / 公斤 / 磅。单位代码：
+
+| Code | 单位 |
+| :-- | :-- |
+| 1 | 公斤（kg） |
+| 2 | 磅（lb） |
+| 3 | 斤（jin） |
+
+**设置单位**：向 `11872f15-…84f3425`（0x5A）写 ATT Write Command（无响应写），帧格式 `DB 04 00 <unit> <CRC16_LE>`：
+
+| 单位 | 完整帧 |
+| :-- | :--- |
+| 公斤 | `DB 04 00 01 20 D9` |
+| 磅 | `DB 04 00 02 70 80` |
+| 斤 | `DB 04 00 03 40 B7` |
+
+秤回 Indication `BD 04 00 00 65 89`（status 0）。
+
+**查询单位**：向 `7e6dbc73-…d7834695` 写通用查询 `DB 03 00 C1 40`（同样是 Write Command），秤回：
+
+| 单位 | 回包 |
+| :-- | :--- |
+| 公斤 | `BD 04 00 01 A4 49` |
+| 磅 | `BD 04 00 02 E4 48` |
+| 斤 | `BD 04 00 03 25 88` |
+
+CRC 规则同 §3：上行 XMODEM（CRC 字段预置 0），下行 MODBUS，均小端。
+`DB 04 00 01 20 D9` 就是 §3 里那个 CRC 黄金向量，实际含义是“设为公斤”。
+
 ## 8. scale3.py 实现要点
 
-**运行流程**（`main`，L721）：
+**运行流程**（`main`，L731）：
 - 无 `scale_config.json`（或带 `--reconfig`）→ 交互式初始化（MAC/性别/年龄/身高，HUID 自动生成，体重由配对称重自动捕获）→ Mode 1 → 保存配置退出。
 - 有配置 → Mode 2 日常 BIA 称重 → 展示结果（体重、体脂、心率、8 电极阻抗）→ 更新 `last_weight` 退出。
 
 **命令行选项**：`--debug/-d`（完整十六进制帧调试输出）· `--reconfig`（强制重新配对）。
 
 **代码结构**：
-- 常量与工具：GATT UUID 表（L60）、加密常量（L78）、CRC 表（L82）、`derive_root_key`（L102）、`generate_auth_tokens`（L110）、`build_framed_chunks`（L117）、`FrameReassembler`（L138）、`build_user_info_profile`（L161）、`safe_write`（写失败自动翻转 response 标志重试，L176）。
-- `Scale3Driver` 类（L262）：8 个步骤顺序执行 —— ①认证握手（0x21/0x25/0x29）→ ②能力上报（0xD7）→ ③时间同步（0x52）→ ④用户档案（0x31）→ ⑤硬件查询（0x7A/0x8F）→ ⑥档案刷新（0x31）→ ⑦BIA 测量（0x97，最长等待 120s）→ ⑧测后提交（0x31 type=2）。
+- 常量与工具：GATT UUID 表（L60）、加密常量（L87）、CRC 表（L92）、`derive_root_key`（L112）、`generate_auth_tokens`（L120）、`build_framed_chunks`（L127）、`FrameReassembler`（L148）、`build_user_info_profile`（L171）、`safe_write`（写失败自动翻转 response 标志重试，L186）。
+- `Scale3Driver` 类（L272）：8 个步骤顺序执行 —— ①认证握手（0x21/0x25/0x29）→ ②能力上报（0xD7）→ ③时间同步（0x52）→ ④用户档案（0x31）→ ⑤硬件查询（0x7A/0x8F）→ ⑥档案刷新（0x31）→ ⑦BIA 测量（0x97，最长等待 120s）→ ⑧测后提交（0x31 type=2）。
 - Mode 1 额外步骤嵌入其中：0x45 武装、0x2D HUID 写入+皮重捕获（25s 超时）、0x5A/0x7A/0x62 查询、0x45 解除（实现中发了 `db0300c140`；TECH.md 指出原始 App 无此步骤）。
 - 异步事件驱动：`asyncio.Event` 同步各 notify 回调（auth_req / work_key / bind / reg / user_info / measure_done）。
+- 单位控制：`build_weight_unit_frame` / `parse_weight_unit_reply` / `set_weight_unit` / `get_weight_unit`（文件末尾，2026-10-28 官方 App 抓包补充）。
 - 日志：全部帧记录到 `scale3_live.log`，`--debug` 时同时打印到终端。
 
 **配置文件 `scale_config.json`** 字段：`mac`、`huid`、`sex`、`age`、`height`、`last_weight`。
-HUID 生成规则：`"300330000"` + 8 位随机数字（`generate_random_huid`，L186）。
+HUID 生成规则：`"300330000"` + 8 位随机数字（`generate_random_huid`，L196）。
 
 ## 9. 实现与文档的差异 / 注意事项
 
-1. **0x45 解除步骤**：scale3.py 在 Mode 1 的 0x31 之后向 0x45 写了 `db0300c140`（L577-L581），而 TECH.md 明确说原始 App 流量中**没有**解除绑定步骤（§6 Mode 1 注）。移植时建议以 TECH.md 为准或保持观察。
-2. **0x97 解密判断**：实现中仅当帧 magic 为 `0xCD` 才解密（L625），TECH.md 表述为固定 AES(WorkKey) 加密。
+1. **0x45 解除步骤**：scale3.py 在 Mode 1 的 0x31 之后向 0x45 写了 `db0300c140`（L587-L591），而 TECH.md 明确说原始 App 流量中**没有**解除绑定步骤（§6 Mode 1 注）。移植时建议以 TECH.md 为准或保持观察。
+2. **0x97 解密判断**：实现中仅当帧 magic 为 `0xCD` 才解密（L635），TECH.md 表述为固定 AES(WorkKey) 加密。
 3. **安全提醒**（TECH.md §8）：不要提交真实 MAC/HUID 或原始 `--debug` 日志（明文包含身份信息）；所有标识符均为占位符。
 4. **适用范围**：结论基于单台 Scale 3 Pro（macOS 环境）；Scale 3 与 3 Pro、不同固件版本可能存在差异。
 5. **技术栈依赖**：Python 3 + `bleak`（BLE）+ `cryptography`（AES-CTR/HMAC）。
+6. **单位设置/查询**：旧版 GATT 表只把 0x5A 标为序列号，实测官方 App 也用它设置单位；单位查询走 `7e6dbc73-42e7-45b9-a6ec-6aa2d7834695`（旧表未列）。详见 §7.3。
 
-## 10. 移植到其他平台（如 KMP）的清单
-
-- [ ] AES-128-CTR（IV 前置 16B）加解密
-- [ ] HMAC-SHA256 双重 token 计算（注意 key/data 顺序）
-- [ ] SHA-256 RootKey 派生（MAC 规整为 12 位大写 HEX + `"0000"` 共 16 字节 ASCII）
-- [ ] CRC-16 CCITT 查表法 + 15 字节分片帧打包/重组
-- [ ] 69 字节档案 / 38 字节 BIA 帧的结构化编解码（均为小端）
-- [ ] 两种模式的完整状态机（含各 notify 超时处理）
-- [ ] 状态码 0/1/2 的分支处理（尤其 Code 1 = 缺验证称重、Code 2 = tokenB 错）
-- [ ] 真实物理 MAC 的获取途径（macOS 需用户手动输入）

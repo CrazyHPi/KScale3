@@ -151,7 +151,8 @@ the OS/stack (notably macOS CoreBluetooth), while UUIDs are stable.
 | `42596cbe-d291-4da3-8ca6-d1ae5d1c9174` | 0x2D HUID Flash Registration / tare query | Write / Notify | `AES(WorkKey)` |
 | `8cc61d7d-66c0-4802-89c3-38c5a163592e` | 0x31 User Profile & Commit | Write / Notify | `AES(WorkKey)` |
 | `00002a2b-0000-1000-8000-00805f9b34fb` | 0x52 Time Sync (standard GATT) | Write / Notify | Clear |
-| `11872f15-a91d-49da-ac89-5107284f3425` | 0x5A Serial Number Info | Write / Notify | Clear |
+| `11872f15-a91d-49da-ac89-5107284f3425` | 0x5A Serial Number Info / **Weight Unit Set** (observed) | Write / Indicate | Clear |
+| `7e6dbc73-42e7-45b9-a6ec-6aa2d7834695` | Weight Unit Query (observed; handle 0x4B in app) | Write / Indicate | Clear |
 | `bfc36f6e-4150-4a4b-9052-3d359e52962e` | 0x62 Device Config State (returns 1) | Write / Notify | Clear |
 | `426f058d-8211-413e-8320-397a890a08bf` | 0x7A Hardware Model (e.g. `M00F7`) | Write / Notify | Clear |
 | `0212f42a-5f19-4bc1-ba52-d7ec7ccb71a4` | 0x8F Offline History | Write / Notify | Clear |
@@ -159,6 +160,10 @@ the OS/stack (notably macOS CoreBluetooth), while UUIDs are stable.
 | `0000fe01-0000-1000-8000-00805f9b34fb` | 0xD7 Capabilities (write-without-response) | Write No Resp | Clear |
 | `0000fe02-0000-1000-8000-00805f9b34fb` | 0xDA Capabilities Response | Notify | Clear |
 | `ba216311-1787-472b-bef6-3eb29e62293e` | Status Sentinel / Event notifications | Notify | Clear |
+
+> Unit set/query was observed on 2026-10-28 from the official Huawei Health app
+> (HCI snoop). Handles were 0x47 (0x5A) and 0x4B (unit query) on that unit;
+> handles are stack-assigned, always address by UUID.
 
 ---
 
@@ -254,6 +259,58 @@ Short scale replies have the form `bd 04 00 XX ...` where `XX` is the status:
 
 > Impedance values are raw counts; converting to Ω or to derived metrics (muscle,
 > water, etc.) requires the vendor's BIA model, which is out of scope here.
+
+### 7.3 Weight Unit Set / Query (observed)
+
+The scale's displayed unit can be changed over BLE. Observed from the official
+Huawei Health app on 2026-10-28 via HCI snoop, and verified by two full
+斤 → 公斤 → 磅 cycles ending on 斤.
+
+**Unit codes**
+
+| Code | Unit |
+| :--- | :--- |
+| 1 | 公斤 / kg |
+| 2 | 磅 / lb |
+| 3 | 斤 / jin |
+
+**Set unit** — write to `11872f15-a91d-49da-ac89-5107284f3425` (0x5A) using
+ATT Write Command (write-without-response). Frame:
+
+```
+DB 04 00 <unit> <CRC16_LE>
+```
+
+| Unit | Exact frame |
+| :--- | :--- |
+| kg | `DB 04 00 01 20 D9` |
+| lb | `DB 04 00 02 70 80` |
+| jin | `DB 04 00 03 40 B7` |
+
+The scale acknowledges with an Indication on the same characteristic:
+`BD 04 00 00 65 89` (status 0).
+
+**Get unit** — write the generic query `DB 03 00 C1 40` to
+`7e6dbc73-42e7-45b9-a6ec-6aa2d7834695` (observed handle 0x4B), also as an ATT
+Write Command. The scale replies with an Indication:
+
+```
+BD 04 00 <unit> <CRC16_LE>
+```
+
+| Unit | Exact reply |
+| :--- | :--- |
+| kg | `BD 04 00 01 A4 49` |
+| lb | `BD 04 00 02 E4 48` |
+| jin | `BD 04 00 03 25 88` |
+
+CRC rules are the same as §3.1: upstream frames use CRC-16/CCITT (XMODEM) over
+the full frame with the CRC field zeroed; downstream replies use
+CRC-16/MODBUS over the preceding bytes. Both are little-endian.
+
+> `DB 04 00 01 20 D9` is the byte sequence previously listed as a CRC golden
+> vector in §3.1; it is specifically the "set unit = kg" frame.
+> `DB 03 00 C1 40` is the generic empty-payload query used by the app.
 
 ---
 

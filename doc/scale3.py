@@ -66,13 +66,23 @@ UUID_REG_2D = "42596cbe-d291-4da3-8ca6-d1ae5d1c9174"           # Handle 45 (0x2D
 UUID_USER_INFO = "8cc61d7d-66c0-4802-89c3-38c5a163592e"        # Handle 49 (0x31)
 UUID_BIND_45 = "4338c65e-ed8e-4085-bbea-a25e33ca6b54"          # Handle 69 (0x45)
 UUID_TIME_SYNC = "00002a2b-0000-1000-8000-00805f9b34fb"        # Handle 82 (0x52)
-UUID_INFO_5A = "11872f15-a91d-49da-ac89-5107284f3425"          # Handle 90 (0x5A) - Serial number
+UUID_INFO_5A = "11872f15-a91d-49da-ac89-5107284f3425"          # Handle 90 (0x5A) - Serial number; also unit set
 UUID_INFO_62 = "bfc36f6e-4150-4a4b-9052-3d359e52962e"          # Handle 98 (0x62)
 UUID_INFO_7A = "426f058d-8211-413e-8320-397a890a08bf"          # Handle 122 (0x7A) - Model
 UUID_HISTORY_8F = "0212f42a-5f19-4bc1-ba52-d7ec7ccb71a4"       # Handle 143 (0x8F)
 UUID_REALTIME_BIA = "46797c17-d639-488d-9476-4789e8472878"     # Handle 151 (0x97)
 UUID_FE01_WRITE = "0000fe01-0000-1000-8000-00805f9b34fb"       # Handle 215 (0xD7)
 UUID_FE02_NOTIFY = "0000fe02-0000-1000-8000-00805f9b34fb"      # Handle 218 (0xDA)
+
+# Weight-unit control (observed 2026-10-28 from Huawei Health; see doc/TECH.md §7.3)
+UUID_WEIGHT_UNIT_SET = UUID_INFO_5A                            # 0x5A; observed handle 0x47
+UUID_WEIGHT_UNIT_GET = "7e6dbc73-42e7-45b9-a6ec-6aa2d7834695"  # observed handle 0x4B
+
+# --- Weight unit codes ---
+WEIGHT_UNIT_KG = 1
+WEIGHT_UNIT_LB = 2
+WEIGHT_UNIT_JIN = 3
+WEIGHT_UNIT_NAMES = {WEIGHT_UNIT_KG: "kg", WEIGHT_UNIT_LB: "lb", WEIGHT_UNIT_JIN: "jin"}
 
 # --- Cryptographic constants ---
 CAK = bytes.fromhex("90B96ECA297EF78717E66E491084D3F8")
@@ -134,6 +144,93 @@ def build_framed_chunks(payload: bytes, magic: int = 0xDB) -> list:
         chunks.append(bytes(frame))
     return chunks
 
+
+# ---------------------------------------------------------------------------
+# Weight unit control (observed from the official Huawei Health app, 2026-10-28)
+# See doc/TECH.md §7.3 and doc/SUMMARY.md §7.3.
+# ---------------------------------------------------------------------------
+def build_weight_unit_frame(unit: int) -> bytes:
+    """Build the 0x5A unit-set frame: DB 04 00 <unit> <CRC16_LE>."""
+    if unit not in WEIGHT_UNIT_NAMES:
+        raise ValueError(f"Unsupported weight unit code: {unit} (expected 1=kg, 2=lb, 3=jin)")
+    return build_framed_chunks(bytes([unit]), magic=0xDB)[0]
+
+
+def parse_weight_unit_reply(raw: bytes) -> Optional[int]:
+    """Parse BD 04 00 XX crc crc and return XX.
+
+    XX == 0 for a set acknowledgement; 1/2/3 for a get-unit reply.
+    """
+    raw = bytes(raw)
+    if len(raw) < 4 or raw[0] != 0xBD or raw[1] != 0x04 or raw[2] != 0x00:
+        return None
+    return raw[3]
+
+
+async def set_weight_unit(client, unit: int, timeout: float = 2.0) -> bool:
+    """Set the scale's displayed unit (1=kg, 2=lb, 3=jin).
+
+    Observed frames:
+      kg  -> DB 04 00 01 20 D9
+      lb  -> DB 04 00 02 70 80
+      jin -> DB 04 00 03 40 B7
+
+    The write uses ATT Write Command (no response); the scale acknowledges with
+    an Indication BD 04 00 00 65 89 (status 0). Returns True on status 0.
+    """
+    reply = asyncio.Event()
+    status = {"value": None}
+
+    def on_reply(sender, data):
+        value = parse_weight_unit_reply(data)
+        if value is not None:
+            status["value"] = value
+            reply.set()
+
+    await client.start_notify(UUID_WEIGHT_UNIT_SET, on_reply)
+    try:
+        await asyncio.sleep(0.15)
+        frame = build_weight_unit_frame(unit)
+        await safe_write(client, UUID_WEIGHT_UNIT_SET, frame, prefer_response=False)
+        await asyncio.wait_for(reply.wait(), timeout=timeout)
+        return status["value"] == 0
+    except asyncio.TimeoutError:
+        return False
+    finally:
+        try:
+            await client.stop_notify(UUID_WEIGHT_UNIT_SET)
+        except Exception:
+            pass
+
+
+async def get_weight_unit(client, timeout: float = 2.0) -> Optional[int]:
+    """Read the scale's current display unit (1=kg, 2=lb, 3=jin).
+
+    Observed traffic: write DB 03 00 C1 40 to the unit-query characteristic
+    (7e6dbc73-...); the scale replies with an Indication BD 04 00 <unit> <crc>.
+    """
+    reply = asyncio.Event()
+    unit = {"value": None}
+
+    def on_reply(sender, data):
+        value = parse_weight_unit_reply(data)
+        if value is not None:
+            unit["value"] = value
+            reply.set()
+
+    await client.start_notify(UUID_WEIGHT_UNIT_GET, on_reply)
+    try:
+        await asyncio.sleep(0.15)
+        await safe_write(client, UUID_WEIGHT_UNIT_GET, bytes.fromhex("db0300c140"), prefer_response=False)
+        await asyncio.wait_for(reply.wait(), timeout=timeout)
+        return unit["value"] if unit["value"] in WEIGHT_UNIT_NAMES else None
+    except asyncio.TimeoutError:
+        return None
+    finally:
+        try:
+            await client.stop_notify(UUID_WEIGHT_UNIT_GET)
+        except Exception:
+            pass
 
 class FrameReassembler:
     def __init__(self):
