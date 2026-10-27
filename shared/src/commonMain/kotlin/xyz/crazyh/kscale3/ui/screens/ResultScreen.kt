@@ -8,14 +8,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import xyz.crazyh.kscale3.ui.components.MeasurementDetail
 import xyz.crazyh.kscale3.ui.preview.previewResult
 import xyz.crazyh.kscale3.ui.vm.PendingMeasurement
@@ -53,20 +52,12 @@ private fun ResultContent(
     ) {
         Text("测量结果", style = MaterialTheme.typography.headlineSmall)
 
-        val p = pending
-        if (p == null) {
-            Text(
-                "已保存（或暂无待保存的测量）。",
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 24.dp),
-            )
-            Button(onClick = onDone, modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
-                Text("返回称重")
-            }
-            return@Column
+        if (pending == null) {
+            onDone()
+            return
         }
 
-        val r = p.result
+        val r = pending.result
         Text("设备时间：${r.deviceTs}", style = MaterialTheme.typography.bodySmall)
 
         MeasurementDetail(
@@ -78,17 +69,14 @@ private fun ResultContent(
 
         if (!saved) {
             Button(
-                onClick = onSave,
+                onClick = {
+                    onSave()
+                    onDone()
+                },
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             ) {
                 Text("保存入库")
             }
-        }
-        OutlinedButton(
-            onClick = { onSave(); onDone() },
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        ) {
-            Text(if (saved) "完成" else "保存并返回称重")
         }
     }
 }
@@ -99,18 +87,6 @@ private fun ResultScreenPreview() {
     MaterialTheme {
         ResultContent(
             pending = PendingMeasurement(userId = 1, result = previewResult),
-            onSave = {},
-            onDone = {},
-        )
-    }
-}
-
-@Preview
-@Composable
-private fun ResultScreenSavedPreview() {
-    MaterialTheme {
-        ResultContent(
-            pending = null,
             onSave = {},
             onDone = {},
         )
