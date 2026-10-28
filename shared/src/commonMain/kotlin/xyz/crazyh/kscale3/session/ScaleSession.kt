@@ -9,8 +9,12 @@ import xyz.crazyh.kscale3.protocol.MacAddress
 
 /**
  * 秤会话契约（PLAN「ScaleSession 状态机」）。
- * 订阅常驻整个会话过程（不像参考实现逐步启停）；pair/measure 为互斥的一次完整会话。
- * Mode 1 约 40s（含验证称重）；Mode 2 约 25s。
+ *
+ * **持久连接**：会话在第一次操作时连接并握手，操作结束后保持连接与 WorkKey，
+ * 后续操作直接复用（不再重复 connect/握手）。秤主动断开后，下一次操作自动重连并重新握手。
+ * 只有 [close] 会主动断开；[cancelOperation] 只中止当前操作、保留连接。
+ *
+ * pair/measure/单位读写在会话内互斥串行。Mode 1 约 40s（含验证称重）；Mode 2 约 25s。
  */
 interface ScaleSession {
     /** 全部步骤状态，供 UI 显示引导文案。 */
@@ -50,7 +54,13 @@ interface ScaleSession {
      */
     suspend fun setWeightUnit(unit: WeightUnit, mac: MacAddress)
 
-    /** 中止进行中的会话（取消 pair/measure 协程并断连）。 */
+    /**
+     * 取消当前进行中的操作（取消 pair/measure/单位读写协程），**保持连接**——
+     * 连接与 WorkKey 留给下一次操作复用。
+     */
+    fun cancelOperation()
+
+    /** 断开连接并释放会话（app 退出/忘记设备/更换设备时调用）；之后不可再用。 */
     fun close()
 }
 

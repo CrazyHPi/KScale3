@@ -38,7 +38,7 @@ class ScaleSessionWeightUnitTest {
 
         assertEquals(WeightUnit.Lb, session.hardwareInfo.value.weightUnit)
         assertEquals(SessionState.Idle, session.state.value) // 单位操作不残留称重屏状态
-        assertEquals(false, scale.peripheral.isConnected.value) // 会话结束已断连
+        assertEquals(true, scale.peripheral.isConnected.value) // 持久连接：操作结束不断连
     }
 
     @Test

@@ -17,6 +17,11 @@ import kotlin.time.Duration.Companion.seconds
 data class SessionTiming(
     /** 连接后/首个写入前静置（合并 Python 订阅后 0.1/0.15/0.2s 三档）。 */
     val settle: Duration = 200.milliseconds,
+    /**
+     * 特征订阅（CCCD）就绪等待。复用连接时订阅是异步重建的：必须等它就绪再发首个写入，
+     * 否则秤的即时应答（单位设置的 Indication）会丢失（2026-10-29 真机日志）。
+     */
+    val subscribe: Duration = 1.seconds,
     /** 0x25/0x29 多帧写入的帧间间隔（其余多帧写连续发）。 */
     val interFrameWrite: Duration = 20.milliseconds,
     val randA: Duration = 3.seconds,

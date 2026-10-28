@@ -1,5 +1,6 @@
 package xyz.crazyh.kscale3.ble
 
+import com.juul.kable.Identifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -10,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
  */
 interface BlePeripheral {
     /** 平台标识：Android 为物理 MAC，iOS 为 CoreBluetooth UUID（⚠️ 不可作 RootKey 输入）。 */
-    val identifier: String
+    val identifier: Identifier
 
     val name: String?
 
@@ -24,6 +25,11 @@ interface BlePeripheral {
     /** 按特征 [uuid] 写入；[withResponse] 指示写-有响应/写-无响应。 */
     suspend fun write(uuid: String, data: ByteArray, withResponse: Boolean)
 
-    /** 订阅特征 notify；会话期间常驻，不再逐步启停。 */
-    fun observe(uuid: String): Flow<ByteArray>
+    /**
+     * 订阅特征 notify/indicate。
+     * [onSubscribed] 在 CCCD 订阅真正生效后回调（Kable `onSubscription` 语义）：
+     * 复用连接时订阅是异步建立的，会话层必须先等到它再发首个写入，否则即时应答（如单位设置的
+     * Indication）会被漏掉。
+     */
+    fun observe(uuid: String, onSubscribed: (() -> Unit)? = null): Flow<ByteArray>
 }

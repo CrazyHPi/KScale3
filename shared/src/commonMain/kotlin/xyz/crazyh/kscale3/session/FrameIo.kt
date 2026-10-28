@@ -21,7 +21,7 @@ import kotlin.time.Duration
 /**
  * 会话帧 I/O：按特征 UUID 一队列（一次 notify 一完整帧，无粘包），坏包 → [SessionError.CrcError]。
  * safeWrite 语义同 scale3.py L176：失败且报 permit/not allowed → 翻转 with-response 重试一次。
- * 订阅在 [start] 后常驻 [scope]（会话期间），不再像参考实现逐步启停。
+ * 订阅在 [start] 后常驻 [scope]（一次操作期间，结束时由调用方取消）；BLE 连接本身跨操作保持。
  */
 internal class FrameIo(
     private val peripheral: BlePeripheral,
@@ -35,6 +35,9 @@ internal class FrameIo(
 
     private val queues = mutableMapOf<String, Channel<Inbound>>()
 
+    /** 每个 framed 特征的订阅就绪信号（Kable `onSubscription` 回调）。 */
+    private val subscribed = Channel<String>(Channel.BUFFERED)
+
     /** Launch session-lifetime collectors; caller cancels the returned jobs on teardown. */
     fun start(): List<Job> {
         val jobs = mutableListOf<Job>()
@@ -44,7 +47,7 @@ internal class FrameIo(
             jobs += scope.launch {
                 val reassembler = FrameReassembler()
                 try {
-                    peripheral.observe(uuid).collect { raw ->
+                    peripheral.observe(uuid) { subscribed.trySend(uuid) }.collect { raw ->
                         onLog?.invoke("[RX $uuid] ${raw.toHex()}")
                         when (val r = reassembler.feed(raw)) {
                             is FeedResult.Complete -> queue.trySend(Inbound.Message(r.frame))
@@ -78,6 +81,18 @@ internal class FrameIo(
         }
         return jobs
     }
+
+    /**
+     * 等待 [FRAMED_UUIDS] 的 CCCD 订阅全部就绪；超时返回 false。
+     * 复用连接时订阅是异步建立的：必须等它就绪再发首个写入，否则秤的即时应答
+     * （如单位设置的 Indication `BD 04 00 00`）会在订阅生效前丢失。
+     * 可选特征订阅失败不应无限阻塞——超时后调用方继续，对应步骤按超时处理。
+     */
+    suspend fun awaitSubscriptions(timeout: Duration): Boolean =
+        withTimeoutOrNull(timeout) {
+            repeat(FRAMED_UUIDS.size) { subscribed.receive() }
+            true
+        } ?: false
 
     suspend fun receive(uuid: String, step: String): Frame {
         return when (val inbound = queues.getValue(uuid).receive()) {

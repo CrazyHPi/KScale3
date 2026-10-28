@@ -3,6 +3,7 @@
 package xyz.crazyh.kscale3.ble
 
 import com.juul.kable.Characteristic
+import com.juul.kable.Identifier
 import com.juul.kable.Peripheral
 import com.juul.kable.State
 import com.juul.kable.WriteType
@@ -20,7 +21,7 @@ import kotlinx.coroutines.flow.stateIn
  */
 class KableBlePeripheral(private val peripheral: Peripheral) : BlePeripheral {
 
-    override val identifier: String get() = peripheral.identifier
+    override val identifier: Identifier get() = peripheral.identifier
 
     override val name: String? get() = peripheral.name
 
@@ -44,8 +45,13 @@ class KableBlePeripheral(private val peripheral: Peripheral) : BlePeripheral {
         )
     }
 
-    override fun observe(uuid: String): Flow<ByteArray> = flow {
-        emitAll(peripheral.observe(characteristic(uuid)))
+    override fun observe(uuid: String, onSubscribed: (() -> Unit)?): Flow<ByteArray> = flow {
+        emitAll(
+            peripheral.observe(characteristic(uuid)) {
+                // Kable: 在 CCCD 订阅（setNotification/writeDescriptor）完成后回调
+                onSubscribed?.invoke()
+            }
+        )
     }
 
     /** 在服务发现结果里按特征 UUID 解析（连接后可用；多服务同 UUID 时取首个）。 */

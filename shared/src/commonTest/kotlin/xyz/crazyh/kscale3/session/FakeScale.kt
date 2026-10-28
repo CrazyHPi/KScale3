@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import xyz.crazyh.kscale3.ble.BlePeripheral
 import xyz.crazyh.kscale3.ble.GattUuids
 import xyz.crazyh.kscale3.protocol.CrcRule
@@ -48,7 +50,12 @@ internal class FakePeripheral : BlePeripheral {
 
     private val inflows = mutableMapOf<String, MutableSharedFlow<ByteArray>>()
 
+    /** Number of successful connect() calls (persistent-link assertions). */
+    var connectCount = 0
+        private set
+
     override suspend fun connect() {
+        connectCount++
         connected.value = true
     }
 
@@ -65,7 +72,15 @@ internal class FakePeripheral : BlePeripheral {
         writeChannel.send(write)
     }
 
-    override fun observe(uuid: String): Flow<ByteArray> = inflow(uuid)
+    /** Gate for observe() subscription callbacks (regression: first write must wait for CCCD). */
+    var subscriptionGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+
+    override fun observe(uuid: String, onSubscribed: (() -> Unit)?): Flow<ByteArray> = flow {
+        // Fake 无 CCCD：开始收集即视为订阅就绪；gate 用于测试"写入前必须等订阅"
+        subscriptionGate?.await()
+        onSubscribed?.invoke()
+        emitAll(inflow(uuid))
+    }
 
     private fun inflow(uuid: String): MutableSharedFlow<ByteArray> =
         inflows.getOrPut(uuid) { MutableSharedFlow(extraBufferCapacity = 256) }

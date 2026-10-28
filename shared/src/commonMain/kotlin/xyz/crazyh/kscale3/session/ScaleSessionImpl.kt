@@ -2,8 +2,11 @@ package xyz.crazyh.kscale3.session
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -13,7 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
@@ -42,10 +46,14 @@ import kotlin.math.roundToInt
 /**
  * Scale session state machine (PLAN zh-CN docs; control scale3.py Scale3Driver.run).
  *
- * Structured concurrency: all work of pair/measure (notify collectors, disconnect
- * watcher, timeouts) runs in the caller coroutine context, so `runTest` virtual time
- * makes e.g. the 120s BIA timeout fire instantly. Subscriptions stay alive for the
- * whole session (see FrameIo).
+ * **Persistent connection**: the first operation connects + handshakes; the connection and
+ * WorkKey are kept afterwards, so later operations skip both. If the scale drops the link,
+ * the next operation reconnects and re-handshakes. Only [close] disconnects.
+ *
+ * Structured concurrency: the operation itself (and its notify collectors / disconnect
+ * watcher / timeouts) runs in the caller coroutine context, so `runTest` virtual time
+ * makes e.g. the 120s BIA timeout fire instantly. Collectors are started per operation
+ * (cheap CCCD re-subscribe, no reconnect) and cancelled when the operation ends.
  *
  * Deliberate deviations from the Python reference (PLAN diff notes 1/2/5/7/8):
  * tokenA verification, 0x31 Code 1/2 branches, 20ms inter-frame gap only on 0x25/0x29,
@@ -62,7 +70,18 @@ class ScaleSessionImpl(
     private val _hardwareInfo = MutableStateFlow(HardwareInfo())
     override val hardwareInfo: StateFlow<HardwareInfo> = _hardwareInfo.asStateFlow()
 
+    /** 操作串行化：同一连接上同时只允许一个 pair/measure/单位操作。 */
+    private val operationMutex = Mutex()
+
+    /** [close] 的断连收尾（close 非 suspend，且需脱离已取消的调用方作用域）。 */
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** 连接级会话密钥；仅在同一连接内有效，断连后置空（下次操作重新握手）。 */
+    private var workKey: ByteArray? = null
+
     private var activeJob: Job? = null
+
+    private var closed = false
 
     override suspend fun pair(user: UserProfileDraft, mac: MacAddress): PairingResult {
         val huid = HuidGenerator.generate()
@@ -120,8 +139,18 @@ class ScaleSessionImpl(
         }
     }
 
-    override fun close() {
+    override fun cancelOperation() {
         activeJob?.cancel()
+    }
+
+    override fun close() {
+        closed = true
+        _state.value = SessionState.Idle
+        activeJob?.cancel()
+        // UNDISPATCHED：disconnect() 不挂起时（如 Fake）立即完成；真机挂起后转 Default 继续
+        cleanupScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            runCatching { peripheral.disconnect() }
+        }
     }
 
     // ---- session skeleton ----
@@ -154,58 +183,84 @@ class ScaleSessionImpl(
     private class SessionOutput(val result: MeasurementResult?)
 
     /**
-     * 连接 → 握手 → [block] → 拆除（断连 watcher、帧日志、NonCancellable 断连）。
-     * 失败原因不在此映射状态：配对流程的"Code 0 后断连仍算成功"需要调用方判断。
+     * 持久连接骨架：按需连接 + 握手 → [block] → 仅拆除本次操作的订阅/监视（**不断连**）。
+     *
+     * - 已连接且 WorkKey 有效：直接复用，不再 connect/握手。
+     * - 秤主动断开：watcher 以 [SessionError.Disconnected] 取消本次操作并清空 WorkKey，
+     *   下一次操作重新 connect + 握手。
+     * - 失败原因不在此映射状态：配对流程的"Code 0 后断连仍算成功"需要调用方判断。
      */
     private suspend fun <T> withConnectedSession(
         mac: MacAddress,
         block: suspend (workKey: ByteArray, io: FrameIo) -> T,
-    ): T {
+    ): T = operationMutex.withLock {
+        if (closed) throw SessionException(SessionError.Disconnected, "session closed")
+
         val rootKey = try {
             ScaleCrypto.deriveRootKey(mac)
         } catch (e: IllegalArgumentException) {
             throw SessionException(SessionError.MacInvalid, cause = e)
         }
 
-        return coroutineScope {
+        coroutineScope {
             activeJob = coroutineContext[Job]
-            _state.value = SessionState.Connecting
+            var linkLost = false
+            var watcher: Job? = null
+            var collectors: List<Job> = emptyList()
             try {
-                peripheral.connect()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw SessionException(SessionError.Disconnected, cause = e)
-            }
-
-            // mid-session disconnect watcher (true -> false counts as disconnect)
-            val watcher = launch {
-                peripheral.isConnected.dropWhile { !it }.first { !it }
-                throw SessionException(SessionError.Disconnected)
-            }
-            val io = FrameIo(peripheral, this, options.onLog)
-            val collectors = io.start()
-
-            try {
-                delay(options.timing.settle)
-                block(handshake(rootKey, io), io)
-            } finally {
-                // stop background children BEFORE disconnecting: otherwise the watcher
-                // sees the teardown disconnect and poisons a successful run with Disconnected
-                watcher.cancel()
-                collectors.forEach { it.cancel() }
-                activeJob = null
-                withContext(NonCancellable) {
-                    runCatching { peripheral.disconnect() }
+                if (!peripheral.isConnected.value) {
+                    _state.value = SessionState.Connecting
+                    try {
+                        peripheral.connect()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        throw SessionException(SessionError.Disconnected, cause = e)
+                    }
+                    // 新连接 = 秤端会话状态已重置，旧 WorkKey 不再有效
+                    workKey = null
                 }
+
+                // mid-session disconnect watcher (true -> false counts as disconnect)
+                watcher = launch {
+                    peripheral.isConnected.dropWhile { !it }.first { !it }
+                    linkLost = true
+                    throw SessionException(SessionError.Disconnected)
+                }
+                val io = FrameIo(peripheral, this, options.onLog)
+                collectors = io.start()
+
+                // 复用连接时订阅是异步重建的：等 CCCD 就绪再发首个写入，否则即时应答会丢
+                // （真机：设置/查询单位在复用连接上漏掉 Indication，2s 超时）
+                if (!io.awaitSubscriptions(options.timing.subscribe)) {
+                    options.onLog?.invoke("subscribe wait timed out; continuing (optional characteristic?)")
+                }
+
+                val key = workKey ?: run {
+                    _state.value = SessionState.Handshaking
+                    delay(options.timing.settle)
+                    handshake(rootKey, io).also { workKey = it }
+                }
+                block(key, io)
+            } finally {
+                // stop background children before the operation returns; the connection stays up
+                watcher?.cancel()
+                collectors.forEach { it.cancel() }
+                // 断连后 WorkKey 作废；连接保持则留给下一次操作复用
+                if (linkLost || !peripheral.isConnected.value) workKey = null
+                activeJob = null
             }
         }
     }
 
     private suspend fun runOperation(mac: MacAddress, mode: Mode): SessionOutput {
+        // 清掉上一次操作的终态：复用连接时 UI 不应短暂显示旧的 Done/Paired
+        _state.value = SessionState.Idle
+
         // Reaching this point after measurementFlow() means 0x31 Code 0 confirmed the profile.
         // Mode 1 failures after that do not undo the flash registration (see pair() KDoc).
         var profileConfirmed = false
+        var captured: MeasurementResult? = null
 
         return try {
             withConnectedSession(mac) { workKey, io ->
@@ -219,7 +274,7 @@ class ScaleSessionImpl(
 
                 // BIA tail: Mode 1 failures do not undo the flash registration
                 val result = try {
-                    biaTail(workKey, mode, io)
+                    biaTail(workKey, mode, io) { captured = it }
                 } catch (e: SessionException) {
                     if (mode is Mode.Pairing) {
                         options.onLog?.invoke("pairing BIA tail failed (${e.error}); registration kept")
@@ -231,6 +286,12 @@ class ScaleSessionImpl(
                 SessionOutput(result)
             }
         } catch (e: SessionException) {
+            // BIA 已解出、提交也已发出后才断连（如收尾静置期间）：测量结果仍然有效
+            val capturedResult = captured
+            if (capturedResult != null && e.error == SessionError.Disconnected) {
+                options.onLog?.invoke("disconnected after measurement captured; result kept")
+                return SessionOutput(capturedResult)
+            }
             // A child coroutine failure (the disconnect watcher) bypasses the inner try/catch:
             // without this outer catch the state stays at AwaitingMeasurement forever and the
             // UI dialog cannot be dismissed.
@@ -244,8 +305,8 @@ class ScaleSessionImpl(
     }
 
     /**
-     * 单位控制：握手后执行一次读/写；结束后状态回到 [SessionState.Idle]（不进称重屏的错误条）。
-     * 会话骨架与配对/称重共用（断连 watcher、帧日志、NonCancellable 断连）。
+     * 单位控制：复用持久连接执行一次读/写；结束后状态回到 [SessionState.Idle]（不进称重屏的错误条）。
+     * 会话骨架与配对/称重共用（按需连接/握手、断连 watcher、帧日志），但不断开连接。
      */
     private suspend fun <T> runUnitOperation(
         mac: MacAddress,
@@ -459,11 +520,15 @@ class ScaleSessionImpl(
         io.awaitSoft(GattUuids.USER_PROFILE, "profileRefresh", timing.profileRefresh)
     }
 
-    /** 0x97 arm + BIA stream -> 0x31 commit. Failures here are soft for Mode 1 (registration kept). */
+    /**
+     * 0x97 arm + BIA stream -> 0x31 commit. Failures here are soft for Mode 1 (registration kept).
+     * [onCaptured] 在 BIA 解出后、提交前回调：若提交/收尾期间断连，调用方仍可保留测量结果。
+     */
     private suspend fun biaTail(
         workKey: ByteArray,
         mode: Mode,
         io: FrameIo,
+        onCaptured: (MeasurementResult) -> Unit = {},
     ): MeasurementResult {
         val timing = options.timing
 
@@ -471,6 +536,24 @@ class ScaleSessionImpl(
         _state.value = SessionState.AwaitingMeasurement
         io.writeRaw(GattUuids.BIA, ProtocolConstants.QUERY_ARM)
         val bia = awaitBia(workKey, io)
+
+        val estimates = BodyCompositionEstimator.estimate(
+            weightKg = bia.weightKg,
+            fatPct = bia.fatPct,
+            heightCm = mode.heightCm,
+            sex = mode.sex,
+            age = mode.age,
+        )
+        val result = MeasurementResult(
+            weightKg = bia.weightKg,
+            fatPct = bia.fatPct,
+            heartRate = bia.heartRate,
+            feetImp = bia.feet,
+            handsImp = bia.hands,
+            deviceTs = deviceTsOf(bia),
+            estimates = estimates,
+        )
+        onCaptured(result)
 
         // 0x31 commit type=2 (weight=0; no ack wait, settle 0.5s like Python)
         _state.value = SessionState.Committing
@@ -489,23 +572,7 @@ class ScaleSessionImpl(
             FrameMagic.EncryptedUpstream,
         )
         delay(timing.commitSettle)
-
-        val estimates = BodyCompositionEstimator.estimate(
-            weightKg = bia.weightKg,
-            fatPct = bia.fatPct,
-            heightCm = mode.heightCm,
-            sex = mode.sex,
-            age = mode.age,
-        )
-        return MeasurementResult(
-            weightKg = bia.weightKg,
-            fatPct = bia.fatPct,
-            heartRate = bia.heartRate,
-            feetImp = bia.feet,
-            handsImp = bia.hands,
-            deviceTs = deviceTsOf(bia),
-            estimates = estimates,
-        )
+        return result
     }
 
     /**

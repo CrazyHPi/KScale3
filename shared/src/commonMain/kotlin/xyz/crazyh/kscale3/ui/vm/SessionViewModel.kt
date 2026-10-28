@@ -2,6 +2,7 @@ package xyz.crazyh.kscale3.ui.vm
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -129,6 +130,9 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
             else -> return false
         }
         val connectionId = bleId ?: mac
+        // 设备变了：旧连接不再有意义，关闭后由下一次操作重新连接
+        val newKey = "$connectionId|$mac"
+        if (sessionKey != null && sessionKey != newKey) closeSession()
         viewModelScope.launch {
             container.deviceRepository.save(
                 PairedDevice(
@@ -151,8 +155,8 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
      */
     suspend fun forgetDevice() {
         if (_busy.value || _unitBusy.value) return
+        closeSession()
         container.deviceRepository.clear()
-        _hardwareInfo.value = HardwareInfo()
     }
 
     /** 删除用户档案（连同其全部历史测量，同事务）；秤上已注册的 HUID 不受影响。 */
@@ -180,7 +184,12 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private val _frameLog = MutableStateFlow<List<String>>(emptyList())
     val frameLog: StateFlow<List<String>> = _frameLog.asStateFlow()
 
+    /**
+     * 持久会话：首次操作创建（连接+握手），之后复用；仅设备变化/忘记设备/VM 销毁时关闭。
+     * [sessionKey] = bleId|mac，用于识别设备是否变化。
+     */
     private var session: ScaleSession? = null
+    private var sessionKey: String? = null
 
     /** Mode 2 日常称重。 */
     fun startWeighIn(user: UserProfile) = launchOperation { s, mac ->
@@ -202,11 +211,19 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * 取消当前操作，但**保持连接**（连接与 WorkKey 留给下一次操作复用）。
+     * 只有忘记设备/更换设备/VM 销毁才真正断连。
+     */
     fun cancelSession() {
-        session?.close()
-        session = null
+        session?.cancelOperation()
         // Cancel must dismiss the dialog even if the session already ended (activeJob == null).
         _sessionState.value = SessionState.Idle
+    }
+
+    override fun onCleared() {
+        closeSession(resetInfo = false)
+        super.onCleared()
     }
 
     // ---- 秤显示单位（TECH.md §7.3） ----
@@ -252,11 +269,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         _unitBusy.value = true
         _unitError.value = null
         viewModelScope.launch {
-            val s = container.createScaleSession(
-                container.createBlePeripheral(device.bleId),
-                logOptions()
-            )
-            session = s
+            val s = obtainSession(device)
             // 单位读写结果经 hardwareInfo 回传（与称重会话同一出口）
             val infoJob = launch { s.hardwareInfo.collect { _hardwareInfo.value = it } }
             try {
@@ -269,7 +282,6 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
                 _hardwareInfo.value = s.hardwareInfo.value
                 infoJob.cancel()
                 _unitBusy.value = false
-                session = null
             }
         }
     }
@@ -287,30 +299,61 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * 取得设备的持久会话：同一设备复用（连接与 WorkKey 保持）；设备变化时关闭旧连接。
+     * 连接本身由会话在首次操作时建立——不预连接（秤可能未唤醒）。
+     */
+    private fun obtainSession(device: PairedDevice): ScaleSession {
+        val key = "${device.bleId}|${device.mac}"
+        val current = session
+        if (current != null && sessionKey == key) return current
+        current?.close()
+        return container.createScaleSession(
+            container.createBlePeripheral(device.bleId),
+            logOptions(),
+        ).also {
+            session = it
+            sessionKey = key
+        }
+    }
+
+    /** 关闭持久会话（断连）；默认同时清空设备信息（换设备/忘记设备）。 */
+    private fun closeSession(resetInfo: Boolean = true) {
+        session?.close()
+        session = null
+        sessionKey = null
+        if (resetInfo) _hardwareInfo.value = HardwareInfo()
+    }
+
     private fun launchOperation(block: suspend (ScaleSession, String) -> Unit) {
         if (_busy.value || _unitBusy.value) return
         val device = device.value ?: return // 未配对设备：UI 层禁用入口
         // 帧日志进 VM（SettingsScreen 调试屏消费）+ println 落 logcat 便于真机诊断
         // （日志仅帧 hex——载荷均加密、MAC 不上线）
-        val options = logOptions()
-        val s = container.createScaleSession(container.createBlePeripheral(device.bleId), options)
-        session = s
+        val s = obtainSession(device)
         println("[KScale3] session start: mac=${device.mac} bleId=${device.bleId}")
         _busy.value = true
+        _sessionState.value = SessionState.Idle
         viewModelScope.launch {
             val stateJob = launch { s.state.collect { _sessionState.value = it } }
             val infoJob = launch { s.hardwareInfo.collect { _hardwareInfo.value = it } }
+            var cancelled = false
             try {
                 block(s, device.mac)
             } catch (e: SessionException) {
                 // 失败原因已在 SessionState.Failed；完整信息（拒收原因/步骤）落 logcat 诊断
                 println("[KScale3] session failed: ${e.message}")
+            } catch (e: CancellationException) {
+                // 用户取消（cancelOperation）：只中止操作，连接保持；UI 回 Idle
+                cancelled = true
+                throw e
             } finally {
                 // StateFlow 收集是异步的：先同步终态，避免 cancel 掉 collector 时丢掉
                 // 最后一次 Failed/Paired 发射（真机表现为对话框永远停在 AwaitingMeasurement）。
                 // 用户取消时协程已非 active——保持 Idle，勿把会话最后状态同步回来。
                 _sessionState.value =
-                    if (currentCoroutineContext().isActive) s.state.value else SessionState.Idle
+                    if (!cancelled && currentCoroutineContext().isActive) s.state.value
+                    else SessionState.Idle
                 stateJob.cancel()
                 infoJob.cancel()
                 _busy.value = false
