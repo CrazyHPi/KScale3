@@ -1,11 +1,11 @@
 package xyz.crazyh.kscale3.di
 
-import com.juul.kable.Peripheral
 import com.juul.kable.Scanner
 import xyz.crazyh.kscale3.ble.BlePeripheral
 import xyz.crazyh.kscale3.ble.BleScanner
 import xyz.crazyh.kscale3.ble.KableBlePeripheral
 import xyz.crazyh.kscale3.ble.KableBleScanner
+import xyz.crazyh.kscale3.ble.createKablePeripheral
 import xyz.crazyh.kscale3.data.db.DriverFactory
 import xyz.crazyh.kscale3.data.db.KScale3Database
 import xyz.crazyh.kscale3.data.db.createDatabase
@@ -38,7 +38,7 @@ class AppContainer(private val driverFactory: DriverFactory) {
 
     /** 按标识建外设（Android=物理 MAC，iOS=CoreBluetooth UUID）。 */
     fun createBlePeripheral(identifier: String): BlePeripheral =
-        KableBlePeripheral(Peripheral(identifier))
+        KableBlePeripheral(createKablePeripheral(identifier))
 
     /** 每次称重/配对新建会话。 */
     fun createScaleSession(

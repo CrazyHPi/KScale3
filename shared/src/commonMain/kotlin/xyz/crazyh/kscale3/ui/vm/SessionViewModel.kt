@@ -26,6 +26,7 @@ import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.domain.WeightUnit
 import xyz.crazyh.kscale3.domain.toDraft
 import xyz.crazyh.kscale3.domain.toMeasurement
+import xyz.crazyh.kscale3.isIosPlatform
 import xyz.crazyh.kscale3.protocol.isValidMacAddress
 import xyz.crazyh.kscale3.session.HardwareInfo
 import xyz.crazyh.kscale3.session.PairingResult
@@ -131,6 +132,8 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
             typedMac.isEmpty() && bleId != null && bleId.isValidMacAddress() -> bleId
             else -> return false
         }
+        // iOS 的连接标识是 CoreBluetooth UUID，不能拿 MAC 兜底（Uuid.parse 会失败）
+        if (bleId == null && isIosPlatform()) return false
         val connectionId = bleId ?: mac
         // 设备变了：旧连接不再有意义，关闭后由下一次操作重新连接
         val newKey = "$connectionId|$mac"

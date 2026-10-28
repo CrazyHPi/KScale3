@@ -1,6 +1,5 @@
 package xyz.crazyh.kscale3.ble
 
-import com.juul.kable.Identifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -10,8 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
  * 由 session 层实现。
  */
 interface BlePeripheral {
-    /** 平台标识：Android 为物理 MAC，iOS 为 CoreBluetooth UUID（⚠️ 不可作 RootKey 输入）。 */
-    val identifier: Identifier
+    /** 平台标识（String）：Android 为物理 MAC，iOS 为 CoreBluetooth UUID（⚠️ 不可作 RootKey 输入）。 */
+    val identifier: String
 
     val name: String?
 

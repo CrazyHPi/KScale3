@@ -11,7 +11,7 @@ class KableBleScanner(private val scanner: Scanner<out Advertisement>) : BleScan
     override fun scan(): Flow<BleAdvertisement> = scanner.advertisements.map { adv ->
         BleAdvertisement(
             name = adv.name ?: adv.peripheralName,
-            identifier = adv.identifier,
+            identifier = adv.identifier.toString(),
             rssi = adv.rssi,
         )
     }

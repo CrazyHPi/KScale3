@@ -3,7 +3,6 @@
 package xyz.crazyh.kscale3.ble
 
 import com.juul.kable.Characteristic
-import com.juul.kable.Identifier
 import com.juul.kable.Peripheral
 import com.juul.kable.State
 import com.juul.kable.WriteType
@@ -21,7 +20,7 @@ import kotlinx.coroutines.flow.stateIn
  */
 class KableBlePeripheral(private val peripheral: Peripheral) : BlePeripheral {
 
-    override val identifier: Identifier get() = peripheral.identifier
+    override val identifier: String get() = peripheral.identifier.toString()
 
     override val name: String? get() = peripheral.name
 

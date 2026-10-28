@@ -192,9 +192,27 @@ private fun DeviceScanContent(
             }
         }
 
+        val selected = results.firstOrNull { it.identifier == selectedId }
+
+        if (isIos) {
+            val hint = when {
+                selected == null ->
+                    "iOS 连接需先扫描并选择设备（CoreBluetooth UUID）；MAC 只用于 RootKey，不能代替扫描。"
+
+                !macInput.isValidMacAddress() -> "请填写秤身标签上的 MAC（RootKey 需要）。"
+                else -> null
+            }
+            hint?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
-        val selected = results.firstOrNull { it.identifier == selectedId }
         Button(
             onClick = {
                 val ok = onSaveDevice(
@@ -202,9 +220,15 @@ private fun DeviceScanContent(
                     selected?.identifier,
                     macInput,
                 )
-                if (ok) onDone() else error = "MAC 格式无效（应为 XX:XX:XX:XX:XX:XX）"
+                if (ok) onDone() else error =
+                    if (isIos) "请先选择扫描到的设备，并填写秤身标签 MAC"
+                    else "MAC 格式无效（应为 XX:XX:XX:XX:XX:XX）"
             },
-            enabled = permissionGranted && (selected != null || macInput.isValidMacAddress()),
+            enabled = permissionGranted && if (isIos) {
+                selected != null && macInput.isValidMacAddress()
+            } else {
+                selected != null || macInput.isValidMacAddress()
+            },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
             Text(if (device != null) "保存并更新设备" else "保存设备并进入主界面")
