@@ -230,13 +230,16 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
 
     // ---- 秤显示单位（TECH.md §7.3） ----
 
+    /** 用户刚选择、尚未被会话确认的单位（乐观显示，操作结束后清空）。 */
+    private val _pendingUnit = MutableStateFlow<WeightUnit?>(null)
+
     /**
-     * 秤显示单位：实时值优先，回退到数据库中的上次值（冷启动/秤离线时设置页仍可显示）。
+     * 秤显示单位：用户选择优先（乐观反馈），其次实时值，最后数据库中的上次值。
      * null = 从未与秤通信过且库中无记录。
      */
     val weightUnit: StateFlow<WeightUnit?> =
-        combine(deviceState, _hardwareInfo) { state, info ->
-            info.weightUnit ?: (state as? DeviceState.Found)?.device?.weightUnit
+        combine(deviceState, _hardwareInfo, _pendingUnit) { state, info, pending ->
+            pending ?: info.weightUnit ?: (state as? DeviceState.Found)?.device?.weightUnit
         }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /**
@@ -276,9 +279,12 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         runUnitOperation(device, reportError = false) { it.readWeightUnit(device.mac) }
     }
 
-    /** 设置秤显示单位（成功后 [weightUnit] 以秤回读值为准；失败显示 [unitError]）。 */
+    /** 设置秤显示单位（选中即乐观显示 [unit]；失败回落到原值并显示 [unitError]）。 */
     fun setWeightUnit(unit: WeightUnit) {
         val device = device.value ?: return
+        if (_unitBusy.value || _busy.value) return
+        // 立即反馈所选单位：连接/握手/等待确认期间不再显示旧值
+        _pendingUnit.value = unit
         runUnitOperation(device, reportError = true) { it.setWeightUnit(unit, device.mac) }
     }
 
@@ -308,6 +314,8 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
                     persistWeightUnit(device, info)
                 }
                 infoJob.cancel()
+                // 操作结束：乐观值回落——成功时会话已写入所选单位，失败时显示原值 + 错误
+                _pendingUnit.value = null
                 _unitBusy.value = false
             }
         }

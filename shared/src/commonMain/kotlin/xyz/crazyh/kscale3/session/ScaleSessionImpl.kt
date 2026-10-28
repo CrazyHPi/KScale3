@@ -122,9 +122,11 @@ class ScaleSessionImpl(
                     code
                 )
             )
-            // 设置确认帧只有 status（无单位码）：回读一次，以秤实际值为准；失败保留请求值
+            // 设置确认 status 0 即成功。⚠️ 不要紧接着回读：真机日志（2026-10-29）显示
+            // 秤的 status 0 只是"命令已接收"，单位应用是异步的，立即回读会拿到切换前的旧值
+            // （8 次切换中 6 次如此），导致 UI 闪回旧单位且持久化错误。
+            // 单位同步交给「新连接握手后自动查询」和「进入设置页刷新」这两个稳定时机。
             _hardwareInfo.value = _hardwareInfo.value.copy(weightUnit = unit)
-            queryWeightUnitSoft(io)
         }
     }
 

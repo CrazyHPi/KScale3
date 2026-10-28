@@ -49,9 +49,10 @@ interface ScaleSession {
     suspend fun readWeightUnit(mac: MacAddress): WeightUnit
 
     /**
-     * 设置秤显示单位（TECH.md §7.3：向 0x5A 写 `DB 04 00 <unit>`，等 status 0 确认），
-     * 随后回读一次（`7e6dbc73` 查询）以秤实际值为准。
-     * 回读失败时 [hardwareInfo] 的 [HardwareInfo.weightUnit] 保留 [unit]；设置失败抛 [SessionException]。
+     * 设置秤显示单位（TECH.md §7.3：向 0x5A 写 `DB 04 00 <unit>`，等 status 0 确认）。
+     * status 0 即视为成功，[hardwareInfo] 的 [HardwareInfo.weightUnit] 更新为 [unit]。
+     * ⚠️ 不在此后立即回读：秤的单位应用是异步的（真机日志证实），立即查询会拿到旧值；
+     * 实际单位由「重连自动查询」与设置页刷新同步。设置失败抛 [SessionException]。
      */
     suspend fun setWeightUnit(unit: WeightUnit, mac: MacAddress)
 

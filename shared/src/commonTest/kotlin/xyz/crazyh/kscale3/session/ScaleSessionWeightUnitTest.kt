@@ -34,63 +34,17 @@ class ScaleSessionWeightUnitTest {
         assertEquals(false, write.withResponse)
 
         scale.sendUnitReply(GattUuids.SERIAL, 0) // BD 04 00 00（设置确认）
-        // 设置后回读一次：以秤实际值为准
-        scale.awaitQuery(GattUuids.WEIGHT_UNIT_QUERY)
-        scale.sendUnitReply(GattUuids.WEIGHT_UNIT_QUERY, 2)
         job.await()
 
         assertEquals(WeightUnit.Lb, session.hardwareInfo.value.weightUnit)
+        // status 0 后不再回读（秤异步应用单位，立即查询会拿到旧值）
+        assertEquals(
+            0,
+            scale.peripheral.attempts.count { it.uuid == GattUuids.WEIGHT_UNIT_QUERY },
+            "设置单位不应立即回读",
+        )
         assertEquals(SessionState.Idle, session.state.value) // 单位操作不残留称重屏状态
         assertEquals(true, scale.peripheral.isConnected.value) // 持久连接：操作结束不断连
-    }
-
-    @Test
-    fun setWeightUnit_readBackWins() = runTest {
-        // 设置确认只有 status；回读若返回不同单位，以秤实际值为准
-        val scale = TestScale()
-        val session = ScaleSessionImpl(scale.peripheral, options())
-        val job = async { session.setWeightUnit(WeightUnit.Lb, TEST_MAC) }
-
-        scale.handshake(autoQueryUnit = false)
-        scale.peripheral.awaitWrite()
-        scale.sendUnitReply(GattUuids.SERIAL, 0)
-        scale.awaitQuery(GattUuids.WEIGHT_UNIT_QUERY)
-        scale.sendUnitReply(GattUuids.WEIGHT_UNIT_QUERY, 3) // 实际仍是斤
-        job.await()
-
-        assertEquals(WeightUnit.Jin, session.hardwareInfo.value.weightUnit)
-    }
-
-    @Test
-    fun setWeightUnit_readBackTimeout_keepsRequestedUnit() = runTest {
-        val scale = TestScale()
-        val session = ScaleSessionImpl(scale.peripheral, options())
-        val job = async { session.setWeightUnit(WeightUnit.Lb, TEST_MAC) }
-
-        scale.handshake(autoQueryUnit = false)
-        scale.peripheral.awaitWrite()
-        scale.sendUnitReply(GattUuids.SERIAL, 0)
-        scale.awaitQuery(GattUuids.WEIGHT_UNIT_QUERY)
-        // 回读无应答 → 2s 虚拟超时，软失败保留请求值
-
-        job.await()
-        assertEquals(WeightUnit.Lb, session.hardwareInfo.value.weightUnit)
-    }
-
-    @Test
-    fun setWeightUnit_readBackUnknownCode_keepsRequestedUnit() = runTest {
-        val scale = TestScale()
-        val session = ScaleSessionImpl(scale.peripheral, options())
-        val job = async { session.setWeightUnit(WeightUnit.Lb, TEST_MAC) }
-
-        scale.handshake(autoQueryUnit = false)
-        scale.peripheral.awaitWrite()
-        scale.sendUnitReply(GattUuids.SERIAL, 0)
-        scale.awaitQuery(GattUuids.WEIGHT_UNIT_QUERY)
-        scale.sendUnitReply(GattUuids.WEIGHT_UNIT_QUERY, 7) // 未知单位码
-
-        job.await()
-        assertEquals(WeightUnit.Lb, session.hardwareInfo.value.weightUnit)
     }
 
     @Test
