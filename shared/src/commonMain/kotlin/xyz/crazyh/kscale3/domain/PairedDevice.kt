@@ -17,5 +17,7 @@ data class PairedDevice(
     val model: String?,
     /** 序列号（0x5A） */
     val sn: String?,
+    /** 秤最近一次上报的显示单位（null = 尚未获得；设置/查询/重连自动查询后回写） */
+    val weightUnit: WeightUnit? = null,
     val lastSeen: Instant,
 )

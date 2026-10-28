@@ -25,7 +25,7 @@ class ScaleSessionWeightUnitTest {
         val session = ScaleSessionImpl(scale.peripheral, options())
         val job = async { session.setWeightUnit(WeightUnit.Lb, TEST_MAC) }
 
-        scale.handshake()
+        scale.handshake(autoQueryUnit = false)
 
         // 0x5A 无响应写，帧 = DB 04 00 02 70 80（黄金向量）
         val write = scale.peripheral.awaitWrite()
@@ -34,6 +34,9 @@ class ScaleSessionWeightUnitTest {
         assertEquals(false, write.withResponse)
 
         scale.sendUnitReply(GattUuids.SERIAL, 0) // BD 04 00 00（设置确认）
+        // 设置后回读一次：以秤实际值为准
+        scale.awaitQuery(GattUuids.WEIGHT_UNIT_QUERY)
+        scale.sendUnitReply(GattUuids.WEIGHT_UNIT_QUERY, 2)
         job.await()
 
         assertEquals(WeightUnit.Lb, session.hardwareInfo.value.weightUnit)
@@ -42,12 +45,61 @@ class ScaleSessionWeightUnitTest {
     }
 
     @Test
+    fun setWeightUnit_readBackWins() = runTest {
+        // 设置确认只有 status；回读若返回不同单位，以秤实际值为准
+        val scale = TestScale()
+        val session = ScaleSessionImpl(scale.peripheral, options())
+        val job = async { session.setWeightUnit(WeightUnit.Lb, TEST_MAC) }
+
+        scale.handshake(autoQueryUnit = false)
+        scale.peripheral.awaitWrite()
+        scale.sendUnitReply(GattUuids.SERIAL, 0)
+        scale.awaitQuery(GattUuids.WEIGHT_UNIT_QUERY)
+        scale.sendUnitReply(GattUuids.WEIGHT_UNIT_QUERY, 3) // 实际仍是斤
+        job.await()
+
+        assertEquals(WeightUnit.Jin, session.hardwareInfo.value.weightUnit)
+    }
+
+    @Test
+    fun setWeightUnit_readBackTimeout_keepsRequestedUnit() = runTest {
+        val scale = TestScale()
+        val session = ScaleSessionImpl(scale.peripheral, options())
+        val job = async { session.setWeightUnit(WeightUnit.Lb, TEST_MAC) }
+
+        scale.handshake(autoQueryUnit = false)
+        scale.peripheral.awaitWrite()
+        scale.sendUnitReply(GattUuids.SERIAL, 0)
+        scale.awaitQuery(GattUuids.WEIGHT_UNIT_QUERY)
+        // 回读无应答 → 2s 虚拟超时，软失败保留请求值
+
+        job.await()
+        assertEquals(WeightUnit.Lb, session.hardwareInfo.value.weightUnit)
+    }
+
+    @Test
+    fun setWeightUnit_readBackUnknownCode_keepsRequestedUnit() = runTest {
+        val scale = TestScale()
+        val session = ScaleSessionImpl(scale.peripheral, options())
+        val job = async { session.setWeightUnit(WeightUnit.Lb, TEST_MAC) }
+
+        scale.handshake(autoQueryUnit = false)
+        scale.peripheral.awaitWrite()
+        scale.sendUnitReply(GattUuids.SERIAL, 0)
+        scale.awaitQuery(GattUuids.WEIGHT_UNIT_QUERY)
+        scale.sendUnitReply(GattUuids.WEIGHT_UNIT_QUERY, 7) // 未知单位码
+
+        job.await()
+        assertEquals(WeightUnit.Lb, session.hardwareInfo.value.weightUnit)
+    }
+
+    @Test
     fun setWeightUnit_nonZeroStatus_fails() = runTest {
         val scale = TestScale()
         val session = ScaleSessionImpl(scale.peripheral, options())
         val job = async { runCatching { session.setWeightUnit(WeightUnit.Jin, TEST_MAC) } }
 
-        scale.handshake()
+        scale.handshake(autoQueryUnit = false)
         scale.peripheral.awaitWrite()
         scale.sendUnitReply(GattUuids.SERIAL, 1) // 非 0 = 设置失败
 
@@ -62,7 +114,7 @@ class ScaleSessionWeightUnitTest {
         val session = ScaleSessionImpl(scale.peripheral, options())
         val job = async { runCatching { session.setWeightUnit(WeightUnit.Kg, TEST_MAC) } }
 
-        scale.handshake()
+        scale.handshake(autoQueryUnit = false)
         scale.peripheral.awaitWrite()
         // 秤不回确认 → 2s 虚拟超时
 
@@ -76,7 +128,7 @@ class ScaleSessionWeightUnitTest {
         val session = ScaleSessionImpl(scale.peripheral, options())
         val job = async { session.readWeightUnit(TEST_MAC) }
 
-        scale.handshake()
+        scale.handshake(autoQueryUnit = false)
 
         val write = scale.peripheral.awaitWrite()
         assertEquals(GattUuids.WEIGHT_UNIT_QUERY, write.uuid)
@@ -94,7 +146,7 @@ class ScaleSessionWeightUnitTest {
         val session = ScaleSessionImpl(scale.peripheral, options())
         val job = async { runCatching { session.readWeightUnit(TEST_MAC) } }
 
-        scale.handshake()
+        scale.handshake(autoQueryUnit = false)
         scale.peripheral.awaitWrite()
         scale.sendUnitReply(GattUuids.WEIGHT_UNIT_QUERY, 7)
 

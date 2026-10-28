@@ -5,6 +5,7 @@ CREATE TABLE paired_device (
     name TEXT NOT NULL,
     model TEXT,
     sn TEXT,
+    weight_unit INTEGER,
     last_seen INTEGER NOT NULL
 );
 
@@ -16,8 +17,14 @@ ORDER BY last_seen DESC
 LIMIT 1;
 
 insert:
-INSERT INTO paired_device(mac, ble_id, name, model, sn, last_seen)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO paired_device(mac, ble_id, name, model, sn, weight_unit, last_seen)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- 秤显示单位（WeightUnit.code；NULL = 尚未获得）。按 MAC 限定，避免设备换行后误写。
+updateWeightUnit:
+UPDATE paired_device
+SET weight_unit = ?
+WHERE mac = ?;
 
 deleteAll:
 DELETE FROM paired_device;

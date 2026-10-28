@@ -104,20 +104,7 @@ class ScaleSessionImpl(
     }
 
     override suspend fun readWeightUnit(mac: MacAddress): WeightUnit =
-        runUnitOperation(mac) { io ->
-            // 通用查询 `db0300c140`，同样是 Write Command（无响应写，TECH.md §7.3）
-            io.writeRaw(
-                GattUuids.WEIGHT_UNIT_QUERY,
-                ProtocolConstants.QUERY_ARM,
-                withResponse = false
-            )
-            val frame = io.await(GattUuids.WEIGHT_UNIT_QUERY, "weightUnit", options.timing.unit)
-            val code = WeightUnitPacket.replyCode(frame.payload)
-            val unit = code?.let(WeightUnit::fromCode)
-                ?: throw SessionException(SessionError.UnexpectedReply("weightUnit", code))
-            _hardwareInfo.value = _hardwareInfo.value.copy(weightUnit = unit)
-            unit
-        }
+        runUnitOperation(mac) { io -> queryWeightUnit(io) }
 
     override suspend fun setWeightUnit(unit: WeightUnit, mac: MacAddress) {
         runUnitOperation(mac) { io ->
@@ -135,8 +122,42 @@ class ScaleSessionImpl(
                     code
                 )
             )
+            // 设置确认帧只有 status（无单位码）：回读一次，以秤实际值为准；失败保留请求值
             _hardwareInfo.value = _hardwareInfo.value.copy(weightUnit = unit)
+            queryWeightUnitSoft(io)
         }
+    }
+
+    /** 通用查询 `db0300c140`（无响应写，TECH.md §7.3）；成功时同步 [hardwareInfo]。 */
+    private suspend fun queryWeightUnit(io: FrameIo): WeightUnit {
+        io.writeRaw(
+            GattUuids.WEIGHT_UNIT_QUERY,
+            ProtocolConstants.QUERY_ARM,
+            withResponse = false
+        )
+        val frame = io.await(GattUuids.WEIGHT_UNIT_QUERY, "weightUnit", options.timing.unit)
+        val code = WeightUnitPacket.replyCode(frame.payload)
+        val unit = code?.let(WeightUnit::fromCode)
+            ?: throw SessionException(SessionError.UnexpectedReply("weightUnit", code))
+        _hardwareInfo.value = _hardwareInfo.value.copy(weightUnit = unit)
+        return unit
+    }
+
+    /**
+     * 软查询：失败只记日志并返回 null（重连自动查询/设置回读不应打断主流程）。
+     * 取消与断链不吞——断链由断连 watcher 统一收尾。
+     */
+    private suspend fun queryWeightUnitSoft(io: FrameIo): WeightUnit? = try {
+        queryWeightUnit(io)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: SessionException) {
+        if (e.error == SessionError.Disconnected) throw e
+        options.onLog?.invoke("weightUnit query failed (ignored): ${e.error}")
+        null
+    } catch (e: Exception) {
+        options.onLog?.invoke("weightUnit query failed (ignored): ${e.message}")
+        null
     }
 
     override fun cancelOperation() {
@@ -192,6 +213,7 @@ class ScaleSessionImpl(
      */
     private suspend fun <T> withConnectedSession(
         mac: MacAddress,
+        queryUnitOnConnect: Boolean = false,
         block: suspend (workKey: ByteArray, io: FrameIo) -> T,
     ): T = operationMutex.withLock {
         if (closed) throw SessionException(SessionError.Disconnected, "session closed")
@@ -236,11 +258,17 @@ class ScaleSessionImpl(
                     options.onLog?.invoke("subscribe wait timed out; continuing (optional characteristic?)")
                 }
 
+                var freshHandshake = false
                 val key = workKey ?: run {
                     _state.value = SessionState.Handshaking
                     delay(options.timing.settle)
-                    handshake(rootKey, io).also { workKey = it }
+                    handshake(rootKey, io).also {
+                        workKey = it
+                        freshHandshake = true
+                    }
                 }
+                // 重新连接（新握手）后向秤查询一次显示单位；软失败不影响本次操作
+                if (freshHandshake && queryUnitOnConnect) queryWeightUnitSoft(io)
                 block(key, io)
             } finally {
                 // stop background children before the operation returns; the connection stays up
@@ -263,7 +291,7 @@ class ScaleSessionImpl(
         var captured: MeasurementResult? = null
 
         return try {
-            withConnectedSession(mac) { workKey, io ->
+            withConnectedSession(mac, queryUnitOnConnect = true) { workKey, io ->
                 val profileWeightDg = when (mode) {
                     is Mode.Pairing -> bindingPreamble(workKey, mode.huid, io)
                     is Mode.Routine -> mode.fallbackWeightDg

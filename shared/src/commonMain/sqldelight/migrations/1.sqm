@@ -1,0 +1,2 @@
+-- 2026-10-29: 持久化秤显示单位（WeightUnit.code；NULL = 尚未获得）
+ALTER TABLE paired_device ADD COLUMN weight_unit INTEGER;

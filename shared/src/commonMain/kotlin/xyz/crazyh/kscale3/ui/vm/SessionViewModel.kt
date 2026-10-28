@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
 import xyz.crazyh.kscale3.ble.BleAdvertisement
 import xyz.crazyh.kscale3.di.AppContainer
@@ -228,10 +230,30 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
 
     // ---- 秤显示单位（TECH.md §7.3） ----
 
-    /** 最近一次读/写到的秤显示单位；null = 尚未与秤通信过。 */
+    /**
+     * 秤显示单位：实时值优先，回退到数据库中的上次值（冷启动/秤离线时设置页仍可显示）。
+     * null = 从未与秤通信过且库中无记录。
+     */
     val weightUnit: StateFlow<WeightUnit?> =
-        _hardwareInfo.map { it.weightUnit }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        combine(deviceState, _hardwareInfo) { state, info ->
+            info.weightUnit ?: (state as? DeviceState.Found)?.device?.weightUnit
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * 把会话捕获到的显示单位持久化（按 MAC 限定）。
+     * 与操作开始时的设备快照相同则跳过；DB 失败只记日志——不因记账失败丢操作结果。
+     */
+    private suspend fun persistWeightUnit(device: PairedDevice, info: HardwareInfo) {
+        val unit = info.weightUnit ?: return
+        if (unit == device.weightUnit) return
+        try {
+            withContext(NonCancellable) {
+                container.deviceRepository.updateWeightUnit(device.mac, unit)
+            }
+        } catch (e: Exception) {
+            println("[KScale3] persist weight unit failed: ${e.message}")
+        }
+    }
 
     /** 单位读写的进行中标记（设置栏禁用 + 进度提示）。 */
     private val _unitBusy = MutableStateFlow(false)
@@ -254,7 +276,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         runUnitOperation(device, reportError = false) { it.readWeightUnit(device.mac) }
     }
 
-    /** 设置秤显示单位（成功后 [weightUnit] 更新为 [unit]；失败显示 [unitError]）。 */
+    /** 设置秤显示单位（成功后 [weightUnit] 以秤回读值为准；失败显示 [unitError]）。 */
     fun setWeightUnit(unit: WeightUnit) {
         val device = device.value ?: return
         runUnitOperation(device, reportError = true) { it.setWeightUnit(unit, device.mac) }
@@ -278,8 +300,13 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
                 if (reportError) _unitError.value = errorText(e.error)
                 else println("[KScale3] unit read failed: ${e.message}")
             } finally {
-                // 收集是异步的：先同步最后一次 hardwareInfo（单位结果），避免 cancel 时丢掉
-                _hardwareInfo.value = s.hardwareInfo.value
+                // 收集是异步的：先同步最后一次 hardwareInfo（单位结果），避免 cancel 时丢掉。
+                // session === s 守卫：换设备/忘记设备已替换会话时，旧会话结果不覆盖新设备信息。
+                val info = s.hardwareInfo.value
+                if (session === s) {
+                    _hardwareInfo.value = info
+                    persistWeightUnit(device, info)
+                }
                 infoJob.cancel()
                 _unitBusy.value = false
             }
@@ -354,6 +381,12 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
                 _sessionState.value =
                     if (!cancelled && currentCoroutineContext().isActive) s.state.value
                     else SessionState.Idle
+                // 重连自动查询到的单位同样先同步再取消收集器（session 已被替换时不回写）
+                val info = s.hardwareInfo.value
+                if (session === s) {
+                    _hardwareInfo.value = info
+                    persistWeightUnit(device, info)
+                }
                 stateJob.cancel()
                 infoJob.cancel()
                 _busy.value = false

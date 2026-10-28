@@ -9,6 +9,7 @@ import kotlinx.datetime.Instant
 import xyz.crazyh.kscale3.ble.GattUuids
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfile
+import xyz.crazyh.kscale3.domain.WeightUnit
 import xyz.crazyh.kscale3.protocol.FrameMagic
 import xyz.crazyh.kscale3.protocol.packets.TimeSyncPacket
 import kotlin.test.Test
@@ -67,6 +68,37 @@ class ScaleSessionPersistentConnectionTest {
             scale.peripheral.attempts.count { it.uuid == GattUuids.AUTH_REQ },
             "复用连接不应重新握手",
         )
+    }
+
+    @Test
+    fun newConnection_queriesUnitOnce_reconnectQueriesAgain() = runTest {
+        val scale = TestScale()
+        val session = ScaleSessionImpl(scale.peripheral, options())
+
+        // 首次连接（新握手）→ 自动查询一次显示单位
+        val first = async { session.measure(user, TEST_MAC) }
+        scale.handshake(replyUnit = 1) // 自动查询回公斤
+        scale.completeRoutineMeasurement()
+        first.await()
+
+        assertEquals(1, scale.peripheral.attempts.count { it.uuid == GattUuids.WEIGHT_UNIT_QUERY })
+        assertEquals(WeightUnit.Kg, session.hardwareInfo.value.weightUnit)
+
+        // 复用连接：不重复查询
+        val second = async { session.measure(user, TEST_MAC) }
+        scale.completeRoutineMeasurement()
+        second.await()
+        assertEquals(1, scale.peripheral.attempts.count { it.uuid == GattUuids.WEIGHT_UNIT_QUERY })
+
+        // 秤主动断开 → 下一次操作重连 + 重新握手 → 再查询一次
+        scale.peripheral.simulateDisconnect()
+        val third = async { session.measure(user, TEST_MAC) }
+        scale.handshake(replyUnit = 3) // 自动查询回斤
+        scale.completeRoutineMeasurement()
+        third.await()
+
+        assertEquals(2, scale.peripheral.attempts.count { it.uuid == GattUuids.WEIGHT_UNIT_QUERY })
+        assertEquals(WeightUnit.Jin, session.hardwareInfo.value.weightUnit)
     }
 
     @Test

@@ -135,8 +135,17 @@ internal class TestScale(
     /**
      * Drive the common handshake (0x21/0x25/0x29/0xD7). [tokenAOverride] injects a wrong tokenA;
      * [workKeyCode] != 0 makes the session abort before the 0xD7 write.
+     *
+     * 称重/注册的新连接会在握手后自动查询一次显示单位（`queryUnitOnConnect`）：
+     * [autoQueryUnit] 消费这次查询，[replyUnit] 非 null 时回包（单位码）。
+     * 单位读/写操作不走自动查询，调用方传 `autoQueryUnit = false`。
      */
-    suspend fun handshake(tokenAOverride: ByteArray? = null, workKeyCode: Int = 0) {
+    suspend fun handshake(
+        tokenAOverride: ByteArray? = null,
+        workKeyCode: Int = 0,
+        autoQueryUnit: Boolean = true,
+        replyUnit: Int? = 1,
+    ) {
         handshakeTokenAOnly(tokenAOverride)
 
         val wire = collectFrames(GattUuids.WORK_KEY, expectedFrames = 3)
@@ -149,6 +158,13 @@ internal class TestScale(
         assertEquals(GattUuids.CAPABILITIES, cap.uuid)
         assertContentEquals(ProtocolConstants.CAPABILITY_BYTES, cap.data)
         assertEquals(false, cap.withResponse)
+
+        if (autoQueryUnit) {
+            val unitQuery = peripheral.awaitWrite()
+            assertEquals(GattUuids.WEIGHT_UNIT_QUERY, unitQuery.uuid)
+            assertContentEquals(ProtocolConstants.QUERY_ARM, unitQuery.data)
+            if (replyUnit != null) sendUnitReply(GattUuids.WEIGHT_UNIT_QUERY, replyUnit)
+        }
     }
 
     /** Consume [expectedFrames] writes to [uuid] and reassemble the message payload. */

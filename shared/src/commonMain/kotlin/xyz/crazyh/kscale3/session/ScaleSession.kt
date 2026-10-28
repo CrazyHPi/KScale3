@@ -49,8 +49,9 @@ interface ScaleSession {
     suspend fun readWeightUnit(mac: MacAddress): WeightUnit
 
     /**
-     * 设置秤显示单位（TECH.md §7.3：向 0x5A 写 `DB 04 00 <unit>`，等 status 0 确认）。
-     * 成功后 [hardwareInfo] 的 [HardwareInfo.weightUnit] 即为 [unit]；失败抛 [SessionException]。
+     * 设置秤显示单位（TECH.md §7.3：向 0x5A 写 `DB 04 00 <unit>`，等 status 0 确认），
+     * 随后回读一次（`7e6dbc73` 查询）以秤实际值为准。
+     * 回读失败时 [hardwareInfo] 的 [HardwareInfo.weightUnit] 保留 [unit]；设置失败抛 [SessionException]。
      */
     suspend fun setWeightUnit(unit: WeightUnit, mac: MacAddress)
 
@@ -85,6 +86,6 @@ data class HardwareInfo(
     val configCode: Int? = null,
     /** 0x8F 离线历史回复（hex 原文，v1 不解码） */
     val historyRaw: String? = null,
-    /** 秤当前显示单位（0x5A / 单位查询；仅设置或查询单位后才有值） */
+    /** 秤当前显示单位（0x5A / 单位查询；设置、查询单位或重连自动查询后才有值） */
     val weightUnit: WeightUnit? = null,
 )

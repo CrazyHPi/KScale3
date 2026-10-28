@@ -9,6 +9,7 @@ import xyz.crazyh.kscale3.domain.Measurement
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfileDraft
+import xyz.crazyh.kscale3.domain.WeightUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -229,6 +230,116 @@ class SqlRepositoriesTest {
         assertEquals("11:22:33:44:55:66", replaced.mac)
         assertEquals("00000000-0000-0000-0000-00000000f00d", replaced.bleId)
         assertNull(replaced.model)
+    }
+
+    @Test
+    fun device_updateWeightUnit_roundTripAndMacScoped() = runTest {
+        val db = createDb()
+        val repo = SqlDeviceRepository(db)
+        repo.save(
+            PairedDevice(
+                id = 0,
+                mac = "AA:BB:CC:DD:EE:FF",
+                bleId = "AA:BB:CC:DD:EE:FF",
+                name = "HaigeBLE",
+                model = null,
+                sn = null,
+                lastSeen = t0,
+            ),
+        )
+        assertNull(repo.observe().first()!!.weightUnit)
+
+        repo.updateWeightUnit("AA:BB:CC:DD:EE:FF", WeightUnit.Jin)
+        assertEquals(WeightUnit.Jin, repo.observe().first()!!.weightUnit)
+
+        // 不同 MAC 不写入（设备已换行时避免误写）
+        repo.updateWeightUnit("11:22:33:44:55:66", WeightUnit.Lb)
+        assertEquals(WeightUnit.Jin, repo.observe().first()!!.weightUnit)
+    }
+
+    @Test
+    fun device_save_sameMac_preservesWeightUnit() = runTest {
+        val db = createDb()
+        val repo = SqlDeviceRepository(db)
+        repo.save(
+            PairedDevice(
+                id = 0,
+                mac = "AA:BB:CC:DD:EE:FF",
+                bleId = "AA:BB:CC:DD:EE:FF",
+                name = "HaigeBLE",
+                model = null,
+                sn = null,
+                weightUnit = WeightUnit.Lb,
+                lastSeen = t0,
+            ),
+        )
+
+        // 同一台秤重新保存（weightUnit = null，iOS 场景 bleId 也可能变化）→ 保留上次单位
+        repo.save(
+            PairedDevice(
+                id = 0,
+                mac = "AA:BB:CC:DD:EE:FF",
+                bleId = "00000000-0000-0000-0000-00000000f00d",
+                name = "HaigeBLE",
+                model = null,
+                sn = null,
+                lastSeen = Instant.fromEpochMilliseconds(t0.toEpochMilliseconds() + 1),
+            ),
+        )
+        assertEquals(WeightUnit.Lb, repo.observe().first()!!.weightUnit)
+
+        // 换一台秤（MAC 不同）→ 不继承旧单位
+        repo.save(
+            PairedDevice(
+                id = 0,
+                mac = "11:22:33:44:55:66",
+                bleId = "11:22:33:44:55:66",
+                name = "HaigeBLE-2",
+                model = null,
+                sn = null,
+                lastSeen = Instant.fromEpochMilliseconds(t0.toEpochMilliseconds() + 2),
+            ),
+        )
+        assertNull(repo.observe().first()!!.weightUnit)
+    }
+
+    @Test
+    fun device_migration_v1_addsWeightUnitColumn() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        // v1 schema：paired_device 尚无 weight_unit 列（真机已装旧库）
+        driver.execute(
+            null,
+            """
+            CREATE TABLE paired_device (
+                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                mac TEXT NOT NULL,
+                ble_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                model TEXT,
+                sn TEXT,
+                last_seen INTEGER NOT NULL
+            )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO paired_device(mac, ble_id, name, model, sn, last_seen) " +
+                    "VALUES ('AA:BB:CC:DD:EE:FF', 'AA:BB:CC:DD:EE:FF', 'HaigeBLE', NULL, NULL, " +
+                    "${t0.toEpochMilliseconds()})",
+            0,
+        )
+
+        assertEquals(2L, KScale3Database.Schema.version)
+        KScale3Database.Schema.migrate(driver, 1, 2)
+
+        val repo = SqlDeviceRepository(KScale3Database(driver))
+        val migrated = repo.observe().first()!!
+        assertEquals("AA:BB:CC:DD:EE:FF", migrated.mac)
+        assertNull(migrated.weightUnit)
+
+        repo.updateWeightUnit(migrated.mac, WeightUnit.Jin)
+        assertEquals(WeightUnit.Jin, repo.observe().first()!!.weightUnit)
     }
 
     @Test

@@ -128,11 +128,7 @@ private fun SettingsContent(
         // 秤显示单位（TECH.md §7.3：0x5A 设置 / 7e6dbc73 查询）
         SettingEntry(
             name = "秤显示单位",
-            value = when {
-                unitBusy -> "连接秤..."
-                weightUnit != null -> weightUnit.label
-                else -> null
-            },
+            value = weightUnit?.label ?: if (unitBusy) "连接秤..." else null,
             // 读写单位本身也在 busy 内（busyOrUnit）
             enabled = device != null && !busy,
         ) {

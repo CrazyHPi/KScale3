@@ -7,6 +7,7 @@ import xyz.crazyh.kscale3.domain.MeasurementResult
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfile
+import xyz.crazyh.kscale3.domain.WeightUnit
 import xyz.crazyh.kscale3.session.HardwareInfo
 
 /** @Preview 用的示例数据（仅 UI 预览，不参与运行时逻辑）。 */
@@ -18,6 +19,7 @@ internal val previewDevice = PairedDevice(
     name = "HUAWEI Scale 3",
     model = "M00F7",
     sn = "SN1234567890",
+    weightUnit = WeightUnit.Kg,
     lastSeen = Instant.parse("2026-10-27T08:30:00Z"),
 )
 

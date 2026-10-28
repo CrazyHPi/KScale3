@@ -110,6 +110,7 @@ class ScaleSessionTest {
                 GattUuids.WORK_KEY,
                 GattUuids.WORK_KEY,
                 GattUuids.CAPABILITIES,
+                GattUuids.WEIGHT_UNIT_QUERY, // 新连接自动查询显示单位
                 GattUuids.TIME_SYNC,
                 GattUuids.USER_PROFILE,
                 GattUuids.USER_PROFILE,
