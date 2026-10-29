@@ -36,6 +36,7 @@ Options:
                    The scale must be re-paired afterwards.
 ==============================================================================
 """
+
 import argparse
 import asyncio
 import datetime
@@ -52,8 +53,8 @@ import uuid
 from typing import Optional
 
 from bleak import BleakClient, BleakScanner
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "scale_config.json")
@@ -119,7 +120,7 @@ CRC_TABLE = [
 
 
 def derive_root_key(mac_address: str) -> bytes:
-    mac_clean = (mac_address.replace(":", "") + "0000").upper().encode('utf-8')
+    mac_clean = (mac_address.replace(":", "") + "0000").upper().encode("utf-8")
     b4 = bytes(((WB1033[i] << 4) ^ WB2033[i]) & 0xFF for i in range(16))
     bE = hashlib.sha256(b4).digest()[:16]
     b5 = bytes(((bE[i] >> 6) ^ mac_clean[i]) & 0xFF for i in range(16))
@@ -137,19 +138,19 @@ def build_framed_chunks(payload: bytes, magic: int = 0xDB) -> list:
     total_frames = (len(payload) + 14) // 15 or 1
     chunks = []
     for i in range(total_frames):
-        chunk_data = payload[i*15:(i+1)*15]
+        chunk_data = payload[i * 15 : (i + 1) * 15]
         length = len(chunk_data)
         i4 = length + 5
         frame = bytearray(i4)
         frame[0] = magic
         frame[1] = length + 3
         frame[2] = (((total_frames - 1) & 0x0F) << 4) | (i & 0x0F)
-        frame[3:3+length] = chunk_data
+        frame[3 : 3 + length] = chunk_data
         s = 0
         for b in frame:
             s = ((s << 8) & 0xFFFF) ^ CRC_TABLE[(b ^ (s >> 8)) & 0xFF]
-        frame[i4-2] = s & 0xFF
-        frame[i4-1] = (s >> 8) & 0xFF
+        frame[i4 - 2] = s & 0xFF
+        frame[i4 - 1] = (s >> 8) & 0xFF
         chunks.append(bytes(frame))
     return chunks
 
@@ -161,11 +162,13 @@ def build_framed_chunks(payload: bytes, magic: int = 0xDB) -> list:
 def build_weight_unit_frame(unit: int) -> bytes:
     """Build the 0x5A unit-set frame: DB 04 00 <unit> <CRC16_LE>."""
     if unit not in WEIGHT_UNIT_NAMES:
-        raise ValueError(f"Unsupported weight unit code: {unit} (expected 1=kg, 2=lb, 3=jin)")
+        raise ValueError(
+            f"Unsupported weight unit code: {unit} (expected 1=kg, 2=lb, 3=jin)"
+        )
     return build_framed_chunks(bytes([unit]), magic=0xDB)[0]
 
 
-def parse_weight_unit_reply(raw: bytes) -> Optional[int]:
+def parse_weight_unit_reply(raw: bytes) -> int | None:
     """Parse BD 04 00 XX crc crc and return XX.
 
     XX == 0 for a set acknowledgement; 1/2/3 for a get-unit reply.
@@ -203,7 +206,7 @@ async def set_weight_unit(client, unit: int, timeout: float = 2.0) -> bool:
         await safe_write(client, UUID_WEIGHT_UNIT_SET, frame, prefer_response=False)
         await asyncio.wait_for(reply.wait(), timeout=timeout)
         return status["value"] == 0
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return False
     finally:
         try:
@@ -212,7 +215,7 @@ async def set_weight_unit(client, unit: int, timeout: float = 2.0) -> bool:
             pass
 
 
-async def get_weight_unit(client, timeout: float = 2.0) -> Optional[int]:
+async def get_weight_unit(client, timeout: float = 2.0) -> int | None:
     """Read the scale's current display unit (1=kg, 2=lb, 3=jin).
 
     Observed traffic: write DB 03 00 C1 40 to the unit-query characteristic
@@ -230,10 +233,15 @@ async def get_weight_unit(client, timeout: float = 2.0) -> Optional[int]:
     await client.start_notify(UUID_WEIGHT_UNIT_GET, on_reply)
     try:
         await asyncio.sleep(0.15)
-        await safe_write(client, UUID_WEIGHT_UNIT_GET, bytes.fromhex("db0300c140"), prefer_response=False)
+        await safe_write(
+            client,
+            UUID_WEIGHT_UNIT_GET,
+            bytes.fromhex("db0300c140"),
+            prefer_response=False,
+        )
         await asyncio.wait_for(reply.wait(), timeout=timeout)
         return unit["value"] if unit["value"] in WEIGHT_UNIT_NAMES else None
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return None
     finally:
         try:
@@ -246,7 +254,7 @@ async def get_weight_unit(client, timeout: float = 2.0) -> Optional[int]:
 # Factory reset (observed from the official Huawei Health app, 2026-10-30)
 # See doc/TECH.md §7.4 and doc/SUMMARY.md §7.4.
 # ---------------------------------------------------------------------------
-def parse_status_reply(raw: bytes) -> Optional[int]:
+def parse_status_reply(raw: bytes) -> int | None:
     """Parse a short reply BD 04 00 XX <crc16_le> and return XX (status code)."""
     raw = bytes(raw)
     if len(raw) < 4 or raw[0] != 0xBD or raw[1] != 0x04 or raw[2] != 0x00:
@@ -290,10 +298,15 @@ async def factory_reset(client, timeout: float = 3.0) -> bool:
     await client.start_notify(UUID_FACTORY_RESET, on_reply)
     try:
         await asyncio.sleep(0.15)
-        await safe_write(client, UUID_FACTORY_RESET, build_factory_reset_frame(), prefer_response=False)
+        await safe_write(
+            client,
+            UUID_FACTORY_RESET,
+            build_factory_reset_frame(),
+            prefer_response=False,
+        )
         await asyncio.wait_for(reply.wait(), timeout=timeout)
         return status["value"] == 0
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return False
     finally:
         try:
@@ -307,7 +320,7 @@ class FrameReassembler:
         self.buffer = bytearray()
         self.magic = None
 
-    def feed(self, raw: bytes) -> Optional[bytes]:
+    def feed(self, raw: bytes) -> bytes | None:
         if len(raw) < 5 or raw[0] not in (0xDB, 0xDC, 0xBD, 0xCD):
             return None
         self.magic = raw[0]
@@ -317,7 +330,7 @@ class FrameReassembler:
         total = ((seq >> 4) & 0x0F) + 1
         if idx == 0:
             self.buffer = bytearray()
-        self.buffer.extend(raw[3:3+length])
+        self.buffer.extend(raw[3 : 3 + length])
         if idx + 1 == total:
             res = bytes(self.buffer)
             self.buffer = bytearray()
@@ -325,16 +338,18 @@ class FrameReassembler:
         return None
 
 
-def build_user_info_profile(huid: str, uid: str, sex: int, age: int, height: int, weight: float, user_type: int) -> bytes:
-    huid_bytes = huid.encode('utf-8')[:30].ljust(30, b'\x00')
-    uid_bytes = uid.encode('utf-8')[:32].ljust(32, b'\x00')
+def build_user_info_profile(
+    huid: str, uid: str, sex: int, age: int, height: int, weight: float, user_type: int
+) -> bytes:
+    huid_bytes = huid.encode("utf-8")[:30].ljust(30, b"\x00")
+    uid_bytes = uid.encode("utf-8")[:32].ljust(32, b"\x00")
     buf = bytearray()
     buf += huid_bytes
     buf += uid_bytes
     buf.append(sex & 0xFF)
     buf.append(age & 0xFF)
-    buf += struct.pack('<H', height)
-    buf += struct.pack('<H', int(round(weight * 100)))
+    buf += struct.pack("<H", height)
+    buf += struct.pack("<H", int(round(weight * 100)))
     buf.append(user_type & 0xFF)
     assert len(buf) == 69
     return bytes(buf)
@@ -361,7 +376,7 @@ def is_valid_mac(mac: str) -> bool:
 
 
 def prompt_user_profile() -> dict:
-    is_macos = (sys.platform == "darwin")
+    is_macos = sys.platform == "darwin"
     print("\n" + "=" * 68)
     print(" 🔧 INITIAL SETUP OF THE HUAWEI SCALE 3 / 3 PRO DRIVER")
     print("=" * 68)
@@ -370,18 +385,26 @@ def prompt_user_profile() -> dict:
     # 1. Physical MAC address
     if is_macos:
         print(" ℹ️ [macOS INFO]")
-        print(" Apple hides the real Bluetooth MAC address and replaces it with a UUID.")
+        print(
+            " Apple hides the real Bluetooth MAC address and replaces it with a UUID."
+        )
         print(" To derive the security key, we need the REAL MAC address.")
-        print(" 👉 You will find it on the label on the back/underside of your scale.\n")
+        print(
+            " 👉 You will find it on the label on the back/underside of your scale.\n"
+        )
         while True:
-            m = input(" 👉 Physical MAC address of the scale (e.g. AA:BB:CC:DD:EE:FF): ").strip()
+            m = input(
+                " 👉 Physical MAC address of the scale (e.g. AA:BB:CC:DD:EE:FF): "
+            ).strip()
             m_clean = m.replace("-", ":").upper()
             if is_valid_mac(m_clean):
                 mac = m_clean
                 break
             print(" ❌ Invalid MAC format. Expected format: XX:XX:XX:XX:XX:XX.")
     else:
-        print(" 👉 Enter the scale's MAC address (leave blank for automatic detection): ")
+        print(
+            " 👉 Enter the scale's MAC address (leave blank for automatic detection): "
+        )
         m = input(" MAC [Auto]: ").strip()
         m_clean = m.replace("-", ":").upper()
         mac = m_clean if is_valid_mac(m_clean) else ""
@@ -422,12 +445,18 @@ def prompt_user_profile() -> dict:
         "sex": sex,
         "age": age,
         "height": height,
-        "last_weight": 0.0
+        "last_weight": 0.0,
     }
 
 
 class Scale3Driver:
-    def __init__(self, config: dict, is_pairing: bool = False, debug: bool = False, factory_reset_only: bool = False):
+    def __init__(
+        self,
+        config: dict,
+        is_pairing: bool = False,
+        debug: bool = False,
+        factory_reset_only: bool = False,
+    ):
         self.config = config
         self.is_pairing = is_pairing
         self.debug = debug
@@ -471,26 +500,44 @@ class Scale3Driver:
             return b""
         iv = full_enc[:16]
         ct = full_enc[16:]
-        return Cipher(algorithms.AES(self.work_key), modes.CTR(iv), backend=default_backend()).decryptor().update(ct)
+        return (
+            Cipher(
+                algorithms.AES(self.work_key), modes.CTR(iv), backend=default_backend()
+            )
+            .decryptor()
+            .update(ct)
+        )
 
     def encrypt(self, plain: bytes) -> bytes:
         iv = os.urandom(16)
-        ct = Cipher(algorithms.AES(self.work_key), modes.CTR(iv), backend=default_backend()).encryptor().update(plain)
+        ct = (
+            Cipher(
+                algorithms.AES(self.work_key), modes.CTR(iv), backend=default_backend()
+            )
+            .encryptor()
+            .update(plain)
+        )
         return iv + ct
 
-    async def scan_for_scale(self) -> Optional[any]:
+    async def scan_for_scale(self) -> any | None:
         found_device = None
         found_event = asyncio.Event()
 
         def detection_callback(device, adv):
             nonlocal found_device
             name = device.name or adv.local_name or ""
-            if self.mac and (device.address.upper() == self.mac or device.address == self.mac):
-                self.info(f"[SCAN] Scale found by MAC: {name} [{device.address}] RSSI={adv.rssi}")
+            if self.mac and (
+                device.address.upper() == self.mac or device.address == self.mac
+            ):
+                self.info(
+                    f"[SCAN] Scale found by MAC: {name} [{device.address}] RSSI={adv.rssi}"
+                )
                 found_device = device
                 found_event.set()
             elif "HaigeBLE" in name or "Scale 3" in name or "HUAWEI Scale" in name:
-                self.info(f"[SCAN] Scale found: {name} [{device.address}] RSSI={adv.rssi}")
+                self.info(
+                    f"[SCAN] Scale found: {name} [{device.address}] RSSI={adv.rssi}"
+                )
                 found_device = device
                 found_event.set()
 
@@ -500,7 +547,7 @@ class Scale3Driver:
         await scanner.start()
         try:
             await asyncio.wait_for(found_event.wait(), timeout=90.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.info("❌ Timeout exceeded (90s). Make sure the scale is turned on.")
             await scanner.stop()
             return None
@@ -517,11 +564,15 @@ class Scale3Driver:
             self.config["mac"] = self.mac
 
         if not self.mac:
-            print("\n❌ ERROR: The scale's real physical MAC address is required to derive the key.")
+            print(
+                "\n❌ ERROR: The scale's real physical MAC address is required to derive the key."
+            )
             return False
 
         self.root_key = derive_root_key(self.mac)
-        mode_str = "FLASH PAIRING (Mode 1)" if self.is_pairing else "ROUTINE WEIGH-IN (Mode 2)"
+        mode_str = (
+            "FLASH PAIRING (Mode 1)" if self.is_pairing else "ROUTINE WEIGH-IN (Mode 2)"
+        )
         self.info(f"[CONNECTION] Connecting to {device.address} ({mode_str})...")
         self.dbg(f"Target Crypto MAC: {self.mac}")
 
@@ -529,9 +580,15 @@ class Scale3Driver:
             self.info("[CONNECTION] Connected to GATT server.")
             # Enable Sentinel (0x73) and FE02 (0xDA)
             try:
-                await client.start_notify(UUID_STATUS_SENTINEL, lambda s, d: self.dbg(f" [SENTINEL RX] {bytes(d).hex()}"))
+                await client.start_notify(
+                    UUID_STATUS_SENTINEL,
+                    lambda s, d: self.dbg(f" [SENTINEL RX] {bytes(d).hex()}"),
+                )
                 await asyncio.sleep(0.1)
-                await client.start_notify(UUID_FE02_NOTIFY, lambda s, d: self.dbg(f" [FE02 RX] {bytes(d).hex()}"))
+                await client.start_notify(
+                    UUID_FE02_NOTIFY,
+                    lambda s, d: self.dbg(f" [FE02 RX] {bytes(d).hex()}"),
+                )
                 await asyncio.sleep(0.1)
             except Exception:
                 pass
@@ -539,7 +596,9 @@ class Scale3Driver:
             # -------------------------------------------------------------
             # STEP 1: AUTHENTICATION & HANDSHAKE
             # -------------------------------------------------------------
-            self.dbg(">>> [STEP 1] Authentication & Handshake (Frida-Validated HMAC Formula)")
+            self.dbg(
+                ">>> [STEP 1] Authentication & Handshake (Frida-Validated HMAC Formula)"
+            )
             randA_reassembler = FrameReassembler()
 
             def on_auth_rx(sender, data):
@@ -558,25 +617,33 @@ class Scale3Driver:
             await safe_write(client, UUID_AUTH_REQ, auth_tx, prefer_response=True)
             try:
                 await asyncio.wait_for(self.auth_req_event.wait(), timeout=3.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.info("❌ Failed to receive randA")
                 return False
             finally:
-                try: await client.stop_notify(UUID_AUTH_REQ)
-                except Exception: pass
+                try:
+                    await client.stop_notify(UUID_AUTH_REQ)
+                except Exception:
+                    pass
 
             randB = os.urandom(16)
             tokenB = generate_auth_tokens(self.randA, randB)
-            self.dbg(f" [0x25 TX] randB ({randB.hex()}) + tokenB EXACT ({tokenB.hex()})")
-            await client.start_notify(UUID_AUTH_TOKEN, lambda s, d: self.dbg(f" [0x25 RX] {bytes(d).hex()}"))
+            self.dbg(
+                f" [0x25 TX] randB ({randB.hex()}) + tokenB EXACT ({tokenB.hex()})"
+            )
+            await client.start_notify(
+                UUID_AUTH_TOKEN, lambda s, d: self.dbg(f" [0x25 RX] {bytes(d).hex()}")
+            )
             await asyncio.sleep(0.15)
             for chunk in build_framed_chunks(randB + tokenB, magic=0xDB):
                 self.dbg(f" -> [0x25 TX Chunk] {chunk.hex()}")
                 await safe_write(client, UUID_AUTH_TOKEN, chunk, prefer_response=True)
                 await asyncio.sleep(0.02)
             await asyncio.sleep(0.3)
-            try: await client.stop_notify(UUID_AUTH_TOKEN)
-            except Exception: pass
+            try:
+                await client.stop_notify(UUID_AUTH_TOKEN)
+            except Exception:
+                pass
 
             def on_wk_rx(sender, data):
                 raw = bytes(data)
@@ -588,18 +655,32 @@ class Scale3Driver:
             await client.start_notify(UUID_WORK_KEY, on_wk_rx)
             await asyncio.sleep(0.15)
             iv_wk = os.urandom(16)
-            enc_wk = Cipher(algorithms.AES(self.root_key), modes.CTR(iv_wk), backend=default_backend()).encryptor().update(self.work_key)
-            self.dbg(f" [0x29 TX] Encrypted WorkKey (IV={iv_wk.hex()}, WorkKey={self.work_key.hex()})")
+            enc_wk = (
+                Cipher(
+                    algorithms.AES(self.root_key),
+                    modes.CTR(iv_wk),
+                    backend=default_backend(),
+                )
+                .encryptor()
+                .update(self.work_key)
+            )
+            self.dbg(
+                f" [0x29 TX] Encrypted WorkKey (IV={iv_wk.hex()}, WorkKey={self.work_key.hex()})"
+            )
             for chunk in build_framed_chunks(iv_wk + enc_wk, magic=0xDC):
                 self.dbg(f" -> [0x29 TX Chunk] {chunk.hex()}")
                 await safe_write(client, UUID_WORK_KEY, chunk, prefer_response=True)
                 await asyncio.sleep(0.02)
             try:
                 await asyncio.wait_for(self.work_key_event.wait(), timeout=2.0)
-                self.info(" ✅ Authentication & Handshake successful (Client authenticated)!")
+                self.info(
+                    " ✅ Authentication & Handshake successful (Client authenticated)!"
+                )
             finally:
-                try: await client.stop_notify(UUID_WORK_KEY)
-                except Exception: pass
+                try:
+                    await client.stop_notify(UUID_WORK_KEY)
+                except Exception:
+                    pass
 
             # -------------------------------------------------------------
             # STEP 2: CAPABILITIES (0xD7)
@@ -620,7 +701,9 @@ class Scale3Driver:
                 ok = await factory_reset(client)
                 if ok:
                     self.info(" ✅ Factory reset acknowledged (status 0).")
-                    self.info(" ℹ️ The scale must be re-paired before it can be used again.")
+                    self.info(
+                        " ℹ️ The scale must be re-paired before it can be used again."
+                    )
                 else:
                     self.info(" ❌ Factory reset failed or timed out.")
                 return ok
@@ -629,18 +712,26 @@ class Scale3Driver:
             # MODE 1: FLASH PAIRING (First launch or --reconfig)
             # -------------------------------------------------------------
             if self.is_pairing:
-                self.dbg(">>> [MODE 1: FLASH PAIRING] Arming 0x45 (01) and Registration 0x2D")
+                self.dbg(
+                    ">>> [MODE 1: FLASH PAIRING] Arming 0x45 (01) and Registration 0x2D"
+                )
                 # 1. Arm Bind 0x45 (value 0x01)
                 bind_chunk = build_framed_chunks(b"\x01", magic=0xDB)[0]  # db04000120d9
-                await client.start_notify(UUID_BIND_45, lambda s, d: self.bind_event.set())
+                await client.start_notify(
+                    UUID_BIND_45, lambda s, d: self.bind_event.set()
+                )
                 await asyncio.sleep(0.15)
                 self.dbg(f" [0x45 TX] {bind_chunk.hex()} (Bind Arming 01)")
                 await safe_write(client, UUID_BIND_45, bind_chunk, prefer_response=True)
-                try: await asyncio.wait_for(self.bind_event.wait(), timeout=2.0)
-                except Exception: pass
+                try:
+                    await asyncio.wait_for(self.bind_event.wait(), timeout=2.0)
+                except Exception:
+                    pass
                 finally:
-                    try: await client.stop_notify(UUID_BIND_45)
-                    except Exception: pass
+                    try:
+                        await client.stop_notify(UUID_BIND_45)
+                    except Exception:
+                        pass
 
                 # 2. Register HUID on 0x2D
                 reg_reassembler = FrameReassembler()
@@ -654,15 +745,17 @@ class Scale3Driver:
                         self.dbg(f" [0x2D DECRYPTED] {dec.hex()}")
                         if len(dec) >= 3:
                             st = dec[0]
-                            pw = struct.unpack('<H', dec[1:3])[0] / 100.0
+                            pw = struct.unpack("<H", dec[1:3])[0] / 100.0
                             if st == 0 and pw > 0:
                                 self.weight = pw
-                                self.dbg(f" [0x2D FLASH TARE WEIGH-IN] {self.weight:.2f} kg")
+                                self.dbg(
+                                    f" [0x2D FLASH TARE WEIGH-IN] {self.weight:.2f} kg"
+                                )
                         self.reg_event.set()
 
                 await client.start_notify(UUID_REG_2D, on_reg_rx)
                 await asyncio.sleep(0.15)
-                huid_reg = self.huid.encode('utf-8')[:30].ljust(30, b'\x00')
+                huid_reg = self.huid.encode("utf-8")[:30].ljust(30, b"\x00")
                 enc_reg = self.encrypt(huid_reg)
                 self.dbg(f" [0x2D TX] Flash HUID registration ({self.huid})")
                 for chunk in build_framed_chunks(enc_reg, magic=0xDC):
@@ -677,22 +770,37 @@ class Scale3Driver:
                 try:
                     await asyncio.wait_for(self.reg_event.wait(), timeout=25.0)
                     if self.weight and self.weight > 0:
-                        self.info(f" ✅ User validated — Weight automatically captured: {self.weight:.2f} kg")
+                        self.info(
+                            f" ✅ User validated — Weight automatically captured: {self.weight:.2f} kg"
+                        )
                     else:
                         self.info(" ✅ Profile written to flash chip.")
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.dbg(" (0x2D flash wait completed)")
                 finally:
-                    try: await client.stop_notify(UUID_REG_2D)
-                    except Exception: pass
+                    try:
+                        await client.stop_notify(UUID_REG_2D)
+                    except Exception:
+                        pass
 
             # -------------------------------------------------------------
             # STEP 3: TIME SYNCHRONIZATION (0x52)
             # -------------------------------------------------------------
             now = datetime.datetime.now()
-            time_payload = struct.pack('<HBBBBBB', now.year, now.month, now.day, now.hour, now.minute, now.second, now.weekday() + 1)
+            time_payload = struct.pack(
+                "<HBBBBBB",
+                now.year,
+                now.month,
+                now.day,
+                now.hour,
+                now.minute,
+                now.second,
+                now.weekday() + 1,
+            )
             time_chunk = build_framed_chunks(time_payload, magic=0xDB)[0]
-            self.dbg(f">>> [STEP 3] Time sync 0x52: {time_chunk.hex()} ({now:%Y-%m-%d %H:%M:%S})")
+            self.dbg(
+                f">>> [STEP 3] Time sync 0x52: {time_chunk.hex()} ({now:%Y-%m-%d %H:%M:%S})"
+            )
             time_event = asyncio.Event()
 
             def on_time_rx(sender, data):
@@ -702,40 +810,63 @@ class Scale3Driver:
             await client.start_notify(UUID_TIME_SYNC, on_time_rx)
             await asyncio.sleep(0.15)
             try:
-                await safe_write(client, UUID_TIME_SYNC, time_chunk, prefer_response=True)
+                await safe_write(
+                    client, UUID_TIME_SYNC, time_chunk, prefer_response=True
+                )
                 await asyncio.wait_for(time_event.wait(), timeout=2.0)
-            except Exception: pass
+            except Exception:
+                pass
             finally:
-                try: await client.stop_notify(UUID_TIME_SYNC)
-                except Exception: pass
+                try:
+                    await client.stop_notify(UUID_TIME_SYNC)
+                except Exception:
+                    pass
 
             # Sequential hardware queries if Mode 1
             if self.is_pairing:
-                for u, label in [(UUID_INFO_5A, "0x5A SN"), (UUID_INFO_7A, "0x7A Model"), (UUID_INFO_62, "0x62 Config")]:
+                for u, label in [
+                    (UUID_INFO_5A, "0x5A SN"),
+                    (UUID_INFO_7A, "0x7A Model"),
+                    (UUID_INFO_62, "0x62 Config"),
+                ]:
                     try:
-                        await client.start_notify(u, lambda s, d, l=label: self.dbg(f" [{l} RX] {bytes(d).hex()}"))
+                        await client.start_notify(
+                            u,
+                            lambda s, d, l=label: self.dbg(
+                                f" [{l} RX] {bytes(d).hex()}"
+                            ),
+                        )
                         await asyncio.sleep(0.1)
                         query_chunk = bytes.fromhex("db0300c140")
                         await safe_write(client, u, query_chunk, prefer_response=True)
                         await asyncio.sleep(0.15)
                         await client.stop_notify(u)
-                    except Exception: pass
+                    except Exception:
+                        pass
 
             # -------------------------------------------------------------
             # STEP 4: USER PROFILE (0x31)
             # -------------------------------------------------------------
-            self.dbg(f">>> [STEP 4] Profile 0x31 (Weight={self.weight:.2f} kg, Sex={self.sex}, Age={self.age}, Height={self.height}cm)")
+            self.dbg(
+                f">>> [STEP 4] Profile 0x31 (Weight={self.weight:.2f} kg, Sex={self.sex}, Age={self.age}, Height={self.height}cm)"
+            )
 
             def on_ui_rx(sender, data):
                 raw = bytes(data)
                 self.user_info_code = raw[3] if len(raw) >= 4 else None
-                status = "SUCCESS (Code 0)" if self.user_info_code == 0 else f"NOTE (Code {self.user_info_code})"
+                status = (
+                    "SUCCESS (Code 0)"
+                    if self.user_info_code == 0
+                    else f"NOTE (Code {self.user_info_code})"
+                )
                 self.dbg(f" [0x31 RX] {raw.hex()} -> {status}")
                 self.user_info_event.set()
 
             await client.start_notify(UUID_USER_INFO, on_ui_rx)
             await asyncio.sleep(0.2)
-            profile_data = build_user_info_profile(self.huid, "", self.sex, self.age, self.height, self.weight, 0)
+            profile_data = build_user_info_profile(
+                self.huid, "", self.sex, self.age, self.height, self.weight, 0
+            )
             self.dbg(f" [0x31 PLAINTEXT 69B] {profile_data.hex()}")
             enc_profile = self.encrypt(profile_data)
             for chunk in build_framed_chunks(enc_profile, magic=0xDC):
@@ -743,54 +874,76 @@ class Scale3Driver:
                 await safe_write(client, UUID_USER_INFO, chunk, prefer_response=True)
             try:
                 await asyncio.wait_for(self.user_info_event.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.dbg(" (0x31 no immediate response, continuing)")
             finally:
-                try: await client.stop_notify(UUID_USER_INFO)
-                except Exception: pass
+                try:
+                    await client.stop_notify(UUID_USER_INFO)
+                except Exception:
+                    pass
 
             if self.user_info_code == 0:
                 self.info(" ✅ User profile validated by the scale (Code 0)!")
             else:
-                self.dbg(f" [0x31 INFO] Response code {self.user_info_code} (dynamic calibration via direct streaming)")
+                self.dbg(
+                    f" [0x31 INFO] Response code {self.user_info_code} (dynamic calibration via direct streaming)"
+                )
 
             # Disarm 0x45 if Mode 1
             if self.is_pairing:
                 try:
-                    await safe_write(client, UUID_BIND_45, bytes.fromhex("db0300c140"), prefer_response=True)
+                    await safe_write(
+                        client,
+                        UUID_BIND_45,
+                        bytes.fromhex("db0300c140"),
+                        prefer_response=True,
+                    )
                     await asyncio.sleep(0.15)
-                except Exception: pass
+                except Exception:
+                    pass
 
             # -------------------------------------------------------------
             # STEP 5: HARDWARE QUERIES (0x7A Model, 0x8F History)
             # -------------------------------------------------------------
             self.dbg(">>> [STEP 5] Hardware queries (0x7A Model, 0x8F History)")
-            for u, label in [(UUID_INFO_7A, "0x7A Model"), (UUID_HISTORY_8F, "0x8F History")]:
+            for u, label in [
+                (UUID_INFO_7A, "0x7A Model"),
+                (UUID_HISTORY_8F, "0x8F History"),
+            ]:
                 try:
-                    await client.start_notify(u, lambda s, d, l=label: self.dbg(f" [{l} RX] {bytes(d).hex()}"))
+                    await client.start_notify(
+                        u, lambda s, d, l=label: self.dbg(f" [{l} RX] {bytes(d).hex()}")
+                    )
                     await asyncio.sleep(0.1)
                     query_chunk = bytes.fromhex("db0300c140")
                     self.dbg(f" [{label} TX] {query_chunk.hex()}")
                     await safe_write(client, u, query_chunk, prefer_response=True)
                     await asyncio.sleep(0.15)
                     await client.stop_notify(u)
-                except Exception: pass
+                except Exception:
+                    pass
 
             # -------------------------------------------------------------
             # STEP 6: PROFILE REFRESH (0x31)
             # -------------------------------------------------------------
             self.dbg(">>> [STEP 6] Profile 0x31 (Refresh)")
             ui_refresh_event = asyncio.Event()
-            await client.start_notify(UUID_USER_INFO, lambda s, d: ui_refresh_event.set())
+            await client.start_notify(
+                UUID_USER_INFO, lambda s, d: ui_refresh_event.set()
+            )
             await asyncio.sleep(0.15)
             enc_profile2 = self.encrypt(profile_data)
             for chunk in build_framed_chunks(enc_profile2, magic=0xDC):
                 await safe_write(client, UUID_USER_INFO, chunk, prefer_response=True)
-            try: await asyncio.wait_for(ui_refresh_event.wait(), timeout=2.0)
-            except Exception: pass
+            try:
+                await asyncio.wait_for(ui_refresh_event.wait(), timeout=2.0)
+            except Exception:
+                pass
             finally:
-                try: await client.stop_notify(UUID_USER_INFO)
-                except Exception: pass
+                try:
+                    await client.stop_notify(UUID_USER_INFO)
+                except Exception:
+                    pass
 
             # -------------------------------------------------------------
             # STEP 7: BIA BIOELECTRICAL IMPEDANCE MEASUREMENT (0x97)
@@ -806,19 +959,21 @@ class Scale3Driver:
                     dec = self.decrypt(res) if meas_reassembler.magic == 0xCD else res
                     self.dbg(f" [0x97 DECRYPTED {len(dec)}B] {dec.hex()}")
                     if len(dec) >= 26:
-                        w = struct.unpack('<H', dec[0:2])[0] / 100.0
-                        fat = struct.unpack('<H', dec[2:4])[0] / 10.0
-                        y, m, d, hh, mm, ss = struct.unpack('<HBBBBB', dec[4:11])
-                        feet = struct.unpack('<6H', dec[12:24])
-                        hr = struct.unpack('<H', dec[24:26])[0]
-                        hands = struct.unpack('<6H', dec[26:38]) if len(dec) >= 38 else ()
+                        w = struct.unpack("<H", dec[0:2])[0] / 100.0
+                        fat = struct.unpack("<H", dec[2:4])[0] / 10.0
+                        y, m, d, hh, mm, ss = struct.unpack("<HBBBBB", dec[4:11])
+                        feet = struct.unpack("<6H", dec[12:24])
+                        hr = struct.unpack("<H", dec[24:26])[0]
+                        hands = (
+                            struct.unpack("<6H", dec[26:38]) if len(dec) >= 38 else ()
+                        )
                         self.measured_data = {
                             "weight": w,
                             "fat": fat,
                             "heart_rate": hr,
                             "feet": feet,
                             "hands": hands,
-                            "timestamp": f"{y:04d}-{m:02d}-{d:02d} at {hh:02d}:{mm:02d}:{ss:02d}"
+                            "timestamp": f"{y:04d}-{m:02d}-{d:02d} at {hh:02d}:{mm:02d}:{ss:02d}",
                         }
                         self.measure_done.set()
 
@@ -827,7 +982,9 @@ class Scale3Driver:
             arm_tx = bytes.fromhex("db0300c140")
             self.dbg(f" [0x97 TX] {arm_tx.hex()} (Arming streaming)")
             try:
-                await safe_write(client, UUID_REALTIME_BIA, arm_tx, prefer_response=True)
+                await safe_write(
+                    client, UUID_REALTIME_BIA, arm_tx, prefer_response=True
+                )
             except Exception as e:
                 self.dbg(f" 0x97: {e}")
 
@@ -846,8 +1003,10 @@ class Scale3Driver:
                     break
                 await asyncio.sleep(0.5)
 
-            try: await client.stop_notify(UUID_REALTIME_BIA)
-            except Exception: pass
+            try:
+                await client.stop_notify(UUID_REALTIME_BIA)
+            except Exception:
+                pass
 
             # -------------------------------------------------------------
             # STEP 8: POST-MEASUREMENT COMMIT (0x31 type=2)
@@ -855,14 +1014,20 @@ class Scale3Driver:
             if self.measure_done.is_set():
                 self.dbg(">>> [STEP 8] Post-measurement commit (0x31 type=2)")
                 try:
-                    commit_profile = build_user_info_profile(self.huid, "", self.sex, self.age, self.height, 0.0, 2)
+                    commit_profile = build_user_info_profile(
+                        self.huid, "", self.sex, self.age, self.height, 0.0, 2
+                    )
                     enc_commit = self.encrypt(commit_profile)
                     self.dbg(f" [0x31 COMMIT PLAINTEXT] {commit_profile.hex()}")
                     for chunk in build_framed_chunks(enc_commit, magic=0xDC):
                         self.dbg(f" -> [0x31 COMMIT TX Chunk] {chunk.hex()}")
-                        await safe_write(client, UUID_USER_INFO, chunk, prefer_response=True)
+                        await safe_write(
+                            client, UUID_USER_INFO, chunk, prefer_response=True
+                        )
                     await asyncio.sleep(0.5)
-                    self.info(" ✅ Measurement validated and acknowledged by the scale.")
+                    self.info(
+                        " ✅ Measurement validated and acknowledged by the scale."
+                    )
                 except Exception as e:
                     self.dbg(f" Commit: {e}")
 
@@ -877,22 +1042,27 @@ class Scale3Driver:
             print(f" 📊 Body Fat: {d['fat']:.1f} %")
             print(f" ❤️ Heart Rate: {d['heart_rate']} bpm")
             print(f" 🦶 Feet Impedances: {d['feet']}")
-            if d['hands']:
+            if d["hands"]:
                 print(f" 🤲 Hands Impedances: {d['hands']}")
             print("=" * 70 + "\n")
 
             # Update scale_config.json with the exact measured weight
             self.config["last_weight"] = d["weight"]
             try:
-                json.dump(self.config, open(CONFIG_FILE, "w", encoding="utf-8"), indent=2)
+                json.dump(
+                    self.config, open(CONFIG_FILE, "w", encoding="utf-8"), indent=2
+                )
                 self.dbg(f"Configuration saved to {CONFIG_FILE}")
-            except Exception: pass
+            except Exception:
+                pass
 
             print("✨ BIA weigh-in session completed successfully!\n")
             return True
         else:
             if self.is_pairing:
-                json.dump(self.config, open(CONFIG_FILE, "w", encoding="utf-8"), indent=2)
+                json.dump(
+                    self.config, open(CONFIG_FILE, "w", encoding="utf-8"), indent=2
+                )
                 print("✅ Configuration saved to scale_config.json!")
                 return True
             print("⚠️ Session ended without a complete measurement.\n")
@@ -900,12 +1070,28 @@ class Scale3Driver:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Standalone, user-friendly driver for HUAWEI Scale 3 / Scale 3 Pro")
-    parser.add_argument("--debug", "-d", action="store_true", help="Enable full hex frame debug output")
-    parser.add_argument("--reconfig", action="store_true", help="Force reconfiguration and profile re-pairing")
-    parser.add_argument("--factory-reset", action="store_true",
-                        help="Erase the scale's binding/user data and exit (requires an existing scale_config.json)")
-    parser.add_argument("--yes", "-y", action="store_true", help="Skip the --factory-reset confirmation prompt")
+    parser = argparse.ArgumentParser(
+        description="Standalone, user-friendly driver for HUAWEI Scale 3 / Scale 3 Pro"
+    )
+    parser.add_argument(
+        "--debug", "-d", action="store_true", help="Enable full hex frame debug output"
+    )
+    parser.add_argument(
+        "--reconfig",
+        action="store_true",
+        help="Force reconfiguration and profile re-pairing",
+    )
+    parser.add_argument(
+        "--factory-reset",
+        action="store_true",
+        help="Erase the scale's binding/user data and exit (requires an existing scale_config.json)",
+    )
+    parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="Skip the --factory-reset confirmation prompt",
+    )
     args = parser.parse_args()
 
     if args.reconfig and args.factory_reset:
@@ -928,7 +1114,9 @@ def main():
     if config is None or args.reconfig:
         if args.factory_reset and config is None:
             print("\n❌ --factory-reset requires an existing scale_config.json:")
-            print("   authentication needs the scale's physical MAC (RootKey derivation).")
+            print(
+                "   authentication needs the scale's physical MAC (RootKey derivation)."
+            )
             sys.exit(1)
         config = prompt_user_profile()
         is_pairing = True
@@ -950,20 +1138,30 @@ def main():
     if factory_reset_only:
         mode_label = "FACTORY RESET (binding/user data will be erased)"
     else:
-        mode_label = "PAIRING & FLASH MODE (First launch)" if is_pairing else "DAILY ROUTINE MODE"
+        mode_label = (
+            "PAIRING & FLASH MODE (First launch)"
+            if is_pairing
+            else "DAILY ROUTINE MODE"
+        )
     print("\n" + "=" * 70)
-    print(f" STANDALONE BLE DRIVER — HUAWEI SCALE 3 / 3 PRO")
+    print(" STANDALONE BLE DRIVER — HUAWEI SCALE 3 / 3 PRO")
     print(f" Target MAC: {config.get('mac')}")
     print(f" Profile HUID: {config.get('huid')}")
-    print(f" Base Profile: Sex={config.get('sex')}, Age={config.get('age')}, Height={config.get('height')}cm, Weight={config.get('last_weight', 0.0):.2f}kg")
+    print(
+        f" Base Profile: Sex={config.get('sex')}, Age={config.get('age')}, Height={config.get('height')}cm, Weight={config.get('last_weight', 0.0):.2f}kg"
+    )
     print(f" BLE Flow: {mode_label}")
     if args.debug:
-        print(f" Log Level: [FULL DEBUG ACTIVE]")
+        print(" Log Level: [FULL DEBUG ACTIVE]")
     print("=" * 70 + "\n")
 
     # 4. Launch the driver
-    driver = Scale3Driver(config=config, is_pairing=is_pairing, debug=args.debug,
-                          factory_reset_only=factory_reset_only)
+    driver = Scale3Driver(
+        config=config,
+        is_pairing=is_pairing,
+        debug=args.debug,
+        factory_reset_only=factory_reset_only,
+    )
     success = asyncio.run(driver.run())
     sys.exit(0 if success else 1)
 

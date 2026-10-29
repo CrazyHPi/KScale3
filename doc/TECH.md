@@ -13,7 +13,9 @@ Bluetooth Low Energy (BLE) with the **HUAWEI Scale 3 / Scale 3 Pro**
 (models HEM-B19 / HaigeBLE / M00F7).
 
 Covers:
-- **Mode 1 — Association / Initial Flash Pairing** (virgin scale, random HUID, flash user registration, **live validation weigh-in**).
+
+- **Mode 1 — Association / Initial Flash Pairing** (virgin scale, random HUID, flash user
+  registration, **live validation weigh-in**).
 - **Mode 2 — Routine Measurement** (fast daily BIA using a saved profile).
 - Cryptographic handshake (`RootKey`, mutual `tokenA`/`tokenB`, session `WorkKey`, AES-128-CTR).
 - Huawei framing protocol (CRC-16 CCITT, multi-packet sequencing).
@@ -44,6 +46,7 @@ Sensitive characteristics are AES-128-CTR encrypted with a per-session `WorkKey`
 > wrong `tokenB` still yields `Code 0` on 0x29 but later `Code 2` on 0x31.
 
 ### 2.1 Static Constants
+
 ```python
 CAK    = bytes.fromhex("90B96ECA297EF78717E66E491084D3F8")
 WB1033 = bytes.fromhex("CA4946D061C9FE534F6044F930EBB69B")
@@ -51,6 +54,7 @@ WB2033 = bytes.fromhex("FBCE6E2B4BAF80ED969BA26B4A4B9325")
 ```
 
 ### 2.2 RootKey Derivation
+
 Derived deterministically from the scale's **true physical MAC** (encrypts the
 WorkKey exchange on 0x29):
 
@@ -73,6 +77,7 @@ def derive_root_key(mac_address: str) -> bytes:
 > BIA frame decrypts to garbage (impossible weights, corrupt dates).
 
 ### 2.3 Mutual Authentication Tokens (`tokenB` / `tokenA`)
+
 Double HMAC-SHA256 over `randAB = randA || randB`. **Key/data order matters** — the
 CAK-derived value is the HMAC *key*, `randAB` is the *data* (a common pitfall is to
 swap them):
@@ -97,7 +102,9 @@ Verified byte-identical against real app captures. An incorrect `tokenB` is the
 classic cause of a persistent `Code 2` on 0x31 despite a correct profile.
 
 ### 2.4 Payload Encryption (`AES-128-CTR`)
-Protected characteristics (`0x31`, `0x2D`, `0x97`): `[ 16B random IV ] + AES-CTR(WorkKey, IV, body)`.
+
+Protected characteristics (`0x31`, `0x2D`, `0x97`):
+`[ 16B random IV ] + AES-CTR(WorkKey, IV, body)`.
 
 ---
 
@@ -108,12 +115,15 @@ Protected characteristics (`0x31`, `0x2D`, `0x97`): `[ 16B random IV ] + AES-CTR
 | Magic (1B)| Length (1B) | Frame Sequence (1B)| Payload Data (0..15B) | CRC-16 (2B, LE) |
 +-----------+-------------+--------------------+-----------------------+-----------------+
 ```
-- **Magic:** `0xDB` cleartext Host→Scale · `0xDC` encrypted Host→Scale · `0xBD` cleartext Scale→Host · `0xCD` encrypted Scale→Host.
+
+- **Magic:** `0xDB` cleartext Host→Scale · `0xDC` encrypted Host→Scale · `0xBD` cleartext
+  Scale→Host · `0xCD` encrypted Scale→Host.
 - **Length:** `len(payload) + 3`
 - **Frame Sequence:** `((total_frames - 1) << 4) | frame_index`
 - **CRC-16:** CCITT (lookup table), over all preceding frame bytes, little-endian.
 
 ### 3.1 CRC-16 Lookup Table
+
 ```python
 CRC_TABLE = [
     0, 4129, 8258, 12387, 16516, 20645, 24774, 28903, 33032, 37161, 41290, 45419, 49548, 53677, 57806, 61935,
@@ -173,11 +183,11 @@ the OS/stack (notably macOS CoreBluetooth), while UUIDs are stable.
 
 Short scale replies have the form `bd 04 00 XX ...` where `XX` is the status:
 
-| Code | Meaning | When seen |
-| :--- | :--- | :--- |
-| **0** | Success / user recognised | 0x29, 0x52, and 0x31 for a **known** user, or a **new** user after a valid weigh-in |
+| Code  | Meaning                                                                                                                                 | When seen                                                                                                   |
+|:------|:----------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------------------------|
+| **0** | Success / user recognised                                                                                                               | 0x29, 0x52, and 0x31 for a **known** user, or a **new** user after a valid weigh-in                         |
 | **1** | Accepted-but-incomplete: profile received but **no validation weigh-in** captured yet (the scale has no reference weight for this user) | 0x31 during association if the user did not stand on the scale during 0x2D; also the constant reply of 0x62 |
-| **2** | Rejected — **authentication failure** (wrong `tokenB`) or unknown/invalid user | 0x31 whenever `tokenB` is incorrect |
+| **2** | Rejected — **authentication failure** (wrong `tokenB`) or unknown/invalid user                                                          | 0x31 whenever `tokenB` is incorrect                                                                         |
 
 > These are empirical, from one Scale 3 Pro unit. Treat as a working model, not a spec.
 
@@ -186,6 +196,7 @@ Short scale replies have the form `bd 04 00 XX ...` where `XX` is the status:
 ## 6. Flow Sequences
 
 ### Common Handshake (both modes)
+
 ```
 1. Subscribe to Status Sentinel + FE02 notifications
 2. 0x21: write "db0300c140" -> receive 16B randA
@@ -195,6 +206,7 @@ Short scale replies have the form `bd 04 00 XX ...` where `XX` is the status:
 ```
 
 ### Mode 1 — Initial Flash Pairing (virgin scale / new HUID)
+
 ```
 6.  0x45: write 0x01 (arm binding)
 7.  0x2D: write AES-CTR(WorkKey, HUID[30B])
@@ -217,6 +229,7 @@ Short scale replies have the form `bd 04 00 XX ...` where `XX` is the status:
 > observed app traffic; do not send one.
 
 ### Mode 2 — Routine Measurement (known HUID already flashed)
+
 ```
 6.  0x52: time sync
 7.  0x31: user profile (type=0)   -> Code 0 (user recognised, no weigh-in needed)
@@ -233,31 +246,33 @@ Short scale replies have the form `bd 04 00 XX ...` where `XX` is the status:
 ## 7. Packet Specifications
 
 ### 7.1 User Profile (`0x31`, 69 bytes cleartext)
-| Offset | Len | Format | Field |
-| :--- | :--- | :--- | :--- |
-| 0 | 30 | ASCII + `\x00` | HUID (numeric account/user id) |
-| 30 | 32 | ASCII + `\x00` | UID (optional secondary uuid; zeroed for type=0) |
-| 62 | 1 | uint8 | Sex (1=male, 0=female) |
-| 63 | 1 | uint8 | Age (years) |
-| 64 | 2 | uint16_le | Height (cm) |
-| 66 | 2 | uint16_le | Weight ×100 (kg). Use the 0x2D tare weight during pairing. |
-| 68 | 1 | uint8 | Type: 0 = profile/measurement, 2 = post-measurement commit |
+
+| Offset | Len | Format         | Field                                                      |
+|:-------|:----|:---------------|:-----------------------------------------------------------|
+| 0      | 30  | ASCII + `\x00` | HUID (numeric account/user id)                             |
+| 30     | 32  | ASCII + `\x00` | UID (optional secondary uuid; zeroed for type=0)           |
+| 62     | 1   | uint8          | Sex (1=male, 0=female)                                     |
+| 63     | 1   | uint8          | Age (years)                                                |
+| 64     | 2   | uint16_le      | Height (cm)                                                |
+| 66     | 2   | uint16_le      | Weight ×100 (kg). Use the 0x2D tare weight during pairing. |
+| 68     | 1   | uint8          | Type: 0 = profile/measurement, 2 = post-measurement commit |
 
 ### 7.2 Real-Time BIA Stream (`0x97`, 38 bytes decrypted)
-| Offset | Format | Unit | Field |
-| :--- | :--- | :--- | :--- |
-| 0..2 | uint16_le | raw/100 kg | Total Weight |
-| 2..4 | uint16_le | raw/10 % | Body Fat % |
-| 4..6 | uint16_le | YYYY | Year |
-| 6 | uint8 | 1..12 | Month |
-| 7 | uint8 | 1..31 | Day |
-| 8 | uint8 | 0..23 | Hour |
-| 9 | uint8 | 0..59 | Minute |
-| 10 | uint8 | 0..59 | Second |
-| 11 | uint8 | 1..7 | Day of week / reserved |
-| 12..24 | 6 × uint16_le | raw | Feet bio-impedances (6 paths) |
-| 24..26 | uint16_le | BPM | Heart Rate |
-| 26..38 | 6 × uint16_le | raw | Hands bio-impedances (6 paths) |
+
+| Offset | Format        | Unit       | Field                          |
+|:-------|:--------------|:-----------|:-------------------------------|
+| 0..2   | uint16_le     | raw/100 kg | Total Weight                   |
+| 2..4   | uint16_le     | raw/10 %   | Body Fat %                     |
+| 4..6   | uint16_le     | YYYY       | Year                           |
+| 6      | uint8         | 1..12      | Month                          |
+| 7      | uint8         | 1..31      | Day                            |
+| 8      | uint8         | 0..23      | Hour                           |
+| 9      | uint8         | 0..59      | Minute                         |
+| 10     | uint8         | 0..59      | Second                         |
+| 11     | uint8         | 1..7       | Day of week / reserved         |
+| 12..24 | 6 × uint16_le | raw        | Feet bio-impedances (6 paths)  |
+| 24..26 | uint16_le     | BPM        | Heart Rate                     |
+| 26..38 | 6 × uint16_le | raw        | Hands bio-impedances (6 paths) |
 
 > Impedance values are raw counts; converting to Ω or to derived metrics (muscle,
 > water, etc.) requires the vendor's BIA model, which is out of scope here.
@@ -270,11 +285,11 @@ Huawei Health app on 2026-10-28 via HCI snoop, and verified by two full
 
 **Unit codes**
 
-| Code | Unit |
-| :--- | :--- |
-| 1 | 公斤 / kg |
-| 2 | 磅 / lb |
-| 3 | 斤 / jin |
+| Code | Unit      |
+|:-----|:----------|
+| 1    | 公斤 / kg |
+| 2    | 磅 / lb   |
+| 3    | 斤 / jin  |
 
 **Set unit** — write to `11872f15-a91d-49da-ac89-5107284f3425` (0x5A) using
 ATT Write Command (write-without-response). Frame:
@@ -283,11 +298,11 @@ ATT Write Command (write-without-response). Frame:
 DB 04 00 <unit> <CRC16_LE>
 ```
 
-| Unit | Exact frame |
-| :--- | :--- |
-| kg | `DB 04 00 01 20 D9` |
-| lb | `DB 04 00 02 70 80` |
-| jin | `DB 04 00 03 40 B7` |
+| Unit | Exact frame         |
+|:-----|:--------------------|
+| kg   | `DB 04 00 01 20 D9` |
+| lb   | `DB 04 00 02 70 80` |
+| jin  | `DB 04 00 03 40 B7` |
 
 The scale acknowledges with an Indication on the same characteristic:
 `BD 04 00 00 65 89` (status 0).
@@ -300,11 +315,11 @@ Write Command. The scale replies with an Indication:
 BD 04 00 <unit> <CRC16_LE>
 ```
 
-| Unit | Exact reply |
-| :--- | :--- |
-| kg | `BD 04 00 01 A4 49` |
-| lb | `BD 04 00 02 E4 48` |
-| jin | `BD 04 00 03 25 88` |
+| Unit | Exact reply         |
+|:-----|:--------------------|
+| kg   | `BD 04 00 01 A4 49` |
+| lb   | `BD 04 00 02 E4 48` |
+| jin  | `BD 04 00 03 25 88` |
 
 CRC rules are the same as §3.1: upstream frames use CRC-16/CCITT (XMODEM) over
 the full frame with the CRC field zeroed; downstream replies use
@@ -367,6 +382,7 @@ reset.
 ## 8. Reference Implementation
 
 `scale3.py` — standalone Python (bleak + cryptography), no vendor account required.
+
 - **First launch:** prompts for physical MAC, sex, age, height; generates a random
   HUID; runs Mode 1 (with the live validation weigh-in); saves a local config.
 - **Subsequent launches:** Mode 2 fast BIA read (~25 s).
@@ -375,6 +391,7 @@ reset.
   scale must be re-paired afterwards.
 
 Notes for contributors:
+
 - Replace all placeholder identifiers with your own; never commit real MAC/HUID or
   raw `--debug` logs (they contain your MAC and HUID in clear).
 - Findings are from a single unit on macOS; Scale 3 vs 3 Pro and firmware revisions
