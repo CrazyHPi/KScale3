@@ -32,6 +32,8 @@ How it works:
 Options:
    --debug, -d     Enable full BLE hex frame debug output
    --reconfig      Force reconfiguration and profile re-pairing
+   --factory-reset Erase the scale's binding/user data (factory reset) and exit.
+                   The scale must be re-paired afterwards.
 ==============================================================================
 """
 import argparse
@@ -77,6 +79,13 @@ UUID_FE02_NOTIFY = "0000fe02-0000-1000-8000-00805f9b34fb"      # Handle 218 (0xD
 # Weight-unit control (observed 2026-10-28 from Huawei Health; see doc/TECH.md §7.3)
 UUID_WEIGHT_UNIT_SET = UUID_INFO_5A                            # 0x5A; observed handle 0x47
 UUID_WEIGHT_UNIT_GET = "7e6dbc73-42e7-45b9-a6ec-6aa2d7834695"  # observed handle 0x4B
+
+# Factory reset control point (observed 2026-10-30; see doc/TECH.md §7.4)
+UUID_FACTORY_RESET = "4599778a-ea8a-4ffe-9499-de1ba7a03f3a"    # observed handle 0x22
+
+# Generic empty-payload frame. On the unit-query / 0x62 characteristics this is
+# a query; on UUID_FACTORY_RESET the same bytes execute a factory reset.
+FRAME_GENERIC_QUERY = bytes.fromhex("db0300c140")
 
 # --- Weight unit codes ---
 WEIGHT_UNIT_KG = 1
@@ -232,6 +241,67 @@ async def get_weight_unit(client, timeout: float = 2.0) -> Optional[int]:
         except Exception:
             pass
 
+
+# ---------------------------------------------------------------------------
+# Factory reset (observed from the official Huawei Health app, 2026-10-30)
+# See doc/TECH.md §7.4 and doc/SUMMARY.md §7.4.
+# ---------------------------------------------------------------------------
+def parse_status_reply(raw: bytes) -> Optional[int]:
+    """Parse a short reply BD 04 00 XX <crc16_le> and return XX (status code)."""
+    raw = bytes(raw)
+    if len(raw) < 4 or raw[0] != 0xBD or raw[1] != 0x04 or raw[2] != 0x00:
+        return None
+    return raw[3]
+
+
+def build_factory_reset_frame() -> bytes:
+    """Build the factory-reset command: DB 03 00 C1 40.
+
+    This is the generic empty-payload frame. On UUID_FACTORY_RESET it means
+    "execute factory reset"; on other characteristics the same bytes are just
+    a query. The target UUID, not the payload, determines the operation.
+    """
+    return FRAME_GENERIC_QUERY
+
+
+async def factory_reset(client, timeout: float = 3.0) -> bool:
+    """Erase the scale's binding/user data (factory reset).
+
+    The connection must already be authenticated (0x21/0x25/0x29 handshake).
+
+    Observed wire sequence (2026-10-30, Huawei Health 17.0.8.300):
+      1. enable Indications on UUID_FACTORY_RESET (CCCD 0x2902 -> 02 00)
+      2. ATT Write Command (no response): DB 03 00 C1 40
+      3. scale indicates BD 04 00 00 65 89 (status 0 = accepted)
+      4. sentinel ba216311-... emits BD 04 00 00 65 89 then BD 04 00 01 A4 49
+      5. the app disconnects; the scale must be re-paired (Mode 1)
+
+    Returns True if the scale acknowledged with status 0.
+    """
+    reply = asyncio.Event()
+    status = {"value": None}
+
+    def on_reply(sender, data):
+        value = parse_status_reply(data)
+        if value is not None:
+            status["value"] = value
+            reply.set()
+
+    await client.start_notify(UUID_FACTORY_RESET, on_reply)
+    try:
+        await asyncio.sleep(0.15)
+        await safe_write(client, UUID_FACTORY_RESET, build_factory_reset_frame(), prefer_response=False)
+        await asyncio.wait_for(reply.wait(), timeout=timeout)
+        return status["value"] == 0
+    except asyncio.TimeoutError:
+        return False
+    finally:
+        try:
+            await client.stop_notify(UUID_FACTORY_RESET)
+        except Exception:
+            pass
+
+
 class FrameReassembler:
     def __init__(self):
         self.buffer = bytearray()
@@ -357,10 +427,11 @@ def prompt_user_profile() -> dict:
 
 
 class Scale3Driver:
-    def __init__(self, config: dict, is_pairing: bool = False, debug: bool = False):
+    def __init__(self, config: dict, is_pairing: bool = False, debug: bool = False, factory_reset_only: bool = False):
         self.config = config
         self.is_pairing = is_pairing
         self.debug = debug
+        self.factory_reset_only = factory_reset_only
         self.mac = config.get("mac", "").strip().upper()
         self.huid = config.get("huid", generate_random_huid())
         self.sex = int(config.get("sex", 1))
@@ -540,6 +611,19 @@ class Scale3Driver:
                 await asyncio.sleep(0.1)
             except Exception as e:
                 self.dbg(f" 0xD7: {e}")
+
+            # -------------------------------------------------------------
+            # FACTORY RESET MODE (--factory-reset)
+            # -------------------------------------------------------------
+            if self.factory_reset_only:
+                self.dbg(">>> [FACTORY RESET] Erasing binding/user data on 0x22")
+                ok = await factory_reset(client)
+                if ok:
+                    self.info(" ✅ Factory reset acknowledged (status 0).")
+                    self.info(" ℹ️ The scale must be re-paired before it can be used again.")
+                else:
+                    self.info(" ❌ Factory reset failed or timed out.")
+                return ok
 
             # -------------------------------------------------------------
             # MODE 1: FLASH PAIRING (First launch or --reconfig)
@@ -819,7 +903,14 @@ def main():
     parser = argparse.ArgumentParser(description="Standalone, user-friendly driver for HUAWEI Scale 3 / Scale 3 Pro")
     parser.add_argument("--debug", "-d", action="store_true", help="Enable full hex frame debug output")
     parser.add_argument("--reconfig", action="store_true", help="Force reconfiguration and profile re-pairing")
+    parser.add_argument("--factory-reset", action="store_true",
+                        help="Erase the scale's binding/user data and exit (requires an existing scale_config.json)")
+    parser.add_argument("--yes", "-y", action="store_true", help="Skip the --factory-reset confirmation prompt")
     args = parser.parse_args()
+
+    if args.reconfig and args.factory_reset:
+        print("❌ --reconfig and --factory-reset cannot be combined.")
+        sys.exit(1)
 
     config = None
     is_pairing = False
@@ -835,13 +926,31 @@ def main():
 
     # 2. If no configuration or reconfig requested: Assistant + Flash Pairing Mode
     if config is None or args.reconfig:
+        if args.factory_reset and config is None:
+            print("\n❌ --factory-reset requires an existing scale_config.json:")
+            print("   authentication needs the scale's physical MAC (RootKey derivation).")
+            sys.exit(1)
         config = prompt_user_profile()
         is_pairing = True
     else:
         is_pairing = False
 
+    # 2b. Factory reset is a standalone authenticated action: no pairing/measurement.
+    factory_reset_only = bool(args.factory_reset)
+    if factory_reset_only:
+        is_pairing = False
+        if not args.yes:
+            print("\n⚠️  FACTORY RESET will erase the scale's binding and user data.")
+            print("   The scale must be re-paired afterwards.")
+            if input("   Type 'RESET' to continue: ").strip() != "RESET":
+                print("Aborted.")
+                sys.exit(1)
+
     # 3. Display loaded profile
-    mode_label = "PAIRING & FLASH MODE (First launch)" if is_pairing else "DAILY ROUTINE MODE"
+    if factory_reset_only:
+        mode_label = "FACTORY RESET (binding/user data will be erased)"
+    else:
+        mode_label = "PAIRING & FLASH MODE (First launch)" if is_pairing else "DAILY ROUTINE MODE"
     print("\n" + "=" * 70)
     print(f" STANDALONE BLE DRIVER — HUAWEI SCALE 3 / 3 PRO")
     print(f" Target MAC: {config.get('mac')}")
@@ -853,7 +962,8 @@ def main():
     print("=" * 70 + "\n")
 
     # 4. Launch the driver
-    driver = Scale3Driver(config=config, is_pairing=is_pairing, debug=args.debug)
+    driver = Scale3Driver(config=config, is_pairing=is_pairing, debug=args.debug,
+                          factory_reset_only=factory_reset_only)
     success = asyncio.run(driver.run())
     sys.exit(0 if success else 1)
 

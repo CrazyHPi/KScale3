@@ -142,28 +142,30 @@ CRC_TABLE = [
 Address characteristics **by UUID**, not by handle: handle numbers are renumbered by
 the OS/stack (notably macOS CoreBluetooth), while UUIDs are stable.
 
-| UUID | Function | Properties | Encryption |
-| :--- | :--- | :--- | :--- |
-| `02b2a08e-f8b0-4047-b1fd-f4e0efeee679` | 0x21 Auth Request (`randA`) | Write / Notify | Clear |
-| `32330a04-15d9-421a-91c5-2a2d5c7525c9` | 0x25 Auth Tokens (`randB`+`tokenB`) | Write / Notify | Clear |
-| `a3d330f8-b84f-4f48-a78c-f8d1e33b597a` | 0x29 Session WorkKey | Write / Notify | `AES(RootKey)` |
-| `4338c65e-ed8e-4085-bbea-a25e33ca6b54` | 0x45 Binding Mode (write `0x01` to arm) | Write / Notify | Clear |
-| `42596cbe-d291-4da3-8ca6-d1ae5d1c9174` | 0x2D HUID Flash Registration / tare query | Write / Notify | `AES(WorkKey)` |
-| `8cc61d7d-66c0-4802-89c3-38c5a163592e` | 0x31 User Profile & Commit | Write / Notify | `AES(WorkKey)` |
-| `00002a2b-0000-1000-8000-00805f9b34fb` | 0x52 Time Sync (standard GATT) | Write / Notify | Clear |
-| `11872f15-a91d-49da-ac89-5107284f3425` | 0x5A Serial Number Info / **Weight Unit Set** (observed) | Write / Indicate | Clear |
-| `7e6dbc73-42e7-45b9-a6ec-6aa2d7834695` | Weight Unit Query (observed; handle 0x4B in app) | Write / Indicate | Clear |
-| `bfc36f6e-4150-4a4b-9052-3d359e52962e` | 0x62 Device Config State (returns 1) | Write / Notify | Clear |
-| `426f058d-8211-413e-8320-397a890a08bf` | 0x7A Hardware Model (e.g. `M00F7`) | Write / Notify | Clear |
-| `0212f42a-5f19-4bc1-ba52-d7ec7ccb71a4` | 0x8F Offline History | Write / Notify | Clear |
-| `46797c17-d639-488d-9476-4789e8472878` | 0x97 Real-Time BIA Stream (38B) | Write / Notify | `AES(WorkKey)` |
-| `0000fe01-0000-1000-8000-00805f9b34fb` | 0xD7 Capabilities (write-without-response) | Write No Resp | Clear |
-| `0000fe02-0000-1000-8000-00805f9b34fb` | 0xDA Capabilities Response | Notify | Clear |
-| `ba216311-1787-472b-bef6-3eb29e62293e` | Status Sentinel / Event notifications | Notify | Clear |
+| UUID                                   | Function                                                   | Properties       | Encryption     |
+|:---------------------------------------|:-----------------------------------------------------------|:-----------------|:---------------|
+| `02b2a08e-f8b0-4047-b1fd-f4e0efeee679` | 0x21 Auth Request (`randA`)                                | Write / Notify   | Clear          |
+| `32330a04-15d9-421a-91c5-2a2d5c7525c9` | 0x25 Auth Tokens (`randB`+`tokenB`)                        | Write / Notify   | Clear          |
+| `a3d330f8-b84f-4f48-a78c-f8d1e33b597a` | 0x29 Session WorkKey                                       | Write / Notify   | `AES(RootKey)` |
+| `4338c65e-ed8e-4085-bbea-a25e33ca6b54` | 0x45 Binding Mode (write `0x01` to arm)                    | Write / Notify   | Clear          |
+| `42596cbe-d291-4da3-8ca6-d1ae5d1c9174` | 0x2D HUID Flash Registration / tare query                  | Write / Notify   | `AES(WorkKey)` |
+| `8cc61d7d-66c0-4802-89c3-38c5a163592e` | 0x31 User Profile & Commit                                 | Write / Notify   | `AES(WorkKey)` |
+| `00002a2b-0000-1000-8000-00805f9b34fb` | 0x52 Time Sync (standard GATT)                             | Write / Notify   | Clear          |
+| `11872f15-a91d-49da-ac89-5107284f3425` | 0x5A Serial Number Info / **Weight Unit Set** (observed)   | Write / Indicate | Clear          |
+| `7e6dbc73-42e7-45b9-a6ec-6aa2d7834695` | Weight Unit Query (observed; handle 0x4B in app)           | Write / Indicate | Clear          |
+| `4599778a-ea8a-4ffe-9499-de1ba7a03f3a` | Factory Reset control point (observed; handle 0x22 in app) | Write / Indicate | Clear          |
+| `bfc36f6e-4150-4a4b-9052-3d359e52962e` | 0x62 Device Config State (returns 1)                       | Write / Notify   | Clear          |
+| `426f058d-8211-413e-8320-397a890a08bf` | 0x7A Hardware Model (e.g. `M00F7`)                         | Write / Notify   | Clear          |
+| `0212f42a-5f19-4bc1-ba52-d7ec7ccb71a4` | 0x8F Offline History                                       | Write / Notify   | Clear          |
+| `46797c17-d639-488d-9476-4789e8472878` | 0x97 Real-Time BIA Stream (38B)                            | Write / Notify   | `AES(WorkKey)` |
+| `0000fe01-0000-1000-8000-00805f9b34fb` | 0xD7 Capabilities (write-without-response)                 | Write No Resp    | Clear          |
+| `0000fe02-0000-1000-8000-00805f9b34fb` | 0xDA Capabilities Response                                 | Notify           | Clear          |
+| `ba216311-1787-472b-bef6-3eb29e62293e` | Status Sentinel / Event notifications                      | Notify           | Clear          |
 
-> Unit set/query was observed on 2026-10-28 from the official Huawei Health app
-> (HCI snoop). Handles were 0x47 (0x5A) and 0x4B (unit query) on that unit;
-> handles are stack-assigned, always address by UUID.
+> Unit set/query was observed on 2026-10-28, and factory reset on 2026-10-30,
+> from the official Huawei Health app (HCI snoop). Handles were 0x47 (0x5A),
+> 0x4B (unit query) and 0x22 (factory reset) on that unit; handles are
+> stack-assigned, always address by UUID.
 
 ---
 
@@ -312,6 +314,54 @@ CRC-16/MODBUS over the preceding bytes. Both are little-endian.
 > vector in §3.1; it is specifically the "set unit = kg" frame.
 > `DB 03 00 C1 40` is the generic empty-payload query used by the app.
 
+### 7.4 Factory Reset (observed)
+
+Observed from the official Huawei Health app (17.0.8.300) on 2026-10-30 via
+HCI snoop, twice in the same session (before re-pairing and after a unit
+change). Test unit: HUAWEI Scale 3-335, model M00D5.
+
+**Reset** — subscribe to Indications on
+`4599778a-ea8a-4ffe-9499-de1ba7a03f3a` (observed handle 0x22; properties
+Write + Indicate), then send the generic empty-payload command as an ATT Write
+Command (write-without-response):
+
+```
+DB 03 00 C1 40
+```
+
+The scale acknowledges with an Indication on the same characteristic:
+
+```
+BD 04 00 00 65 89   (status 0)
+```
+
+Then the Status Sentinel (`ba216311-...`) emits:
+
+```
+BD 04 00 00 65 89   (status 0)
+BD 04 00 01 A4 49   (status 1)
+```
+
+after which the app disconnects. The scale erases its binding/user data and
+must be re-paired (Mode 1) before it can be used again.
+
+**Important:** `DB 03 00 C1 40` is the same generic empty-payload frame used
+for queries on `7e6dbc73` and `bfc36f6e`. On `4599778a` it means "execute
+factory reset"; the target characteristic, not the payload, determines the
+operation. Do not reuse a query helper blindly.
+
+Timing observed (two resets, same firmware):
+
+| Reset | Context                                | Write            | Reply               | Sentinel |
+|:------|:---------------------------------------|:-----------------|:--------------------|:---------|
+| #1    | fresh connection, ~5 s after handshake | `DB 03 00 C1 40` | `BD 04 00 00 65 89` | 0 → 1    |
+| #2    | after setting unit to 斤 (3)           | `DB 03 00 C1 40` | `BD 04 00 00 65 89` | 0 → 1    |
+
+The capture also contained a third write of the same frame from a previous day
+with the same reply/sentinel pattern. In both observed sessions the app removed
+the device from its list and started a fresh pairing scan immediately after the
+reset.
+
 ---
 
 ## 8. Reference Implementation
@@ -320,7 +370,9 @@ CRC-16/MODBUS over the preceding bytes. Both are little-endian.
 - **First launch:** prompts for physical MAC, sex, age, height; generates a random
   HUID; runs Mode 1 (with the live validation weigh-in); saves a local config.
 - **Subsequent launches:** Mode 2 fast BIA read (~25 s).
-- Flags: `--debug` full packet trace; `--reconfig` reset profile.
+- Flags: `--debug` full packet trace; `--reconfig` reset profile;
+  `--factory-reset` wipe the scale's binding/user data (§7.4) and exit — the
+  scale must be re-paired afterwards.
 
 Notes for contributors:
 - Replace all placeholder identifiers with your own; never commit real MAC/HUID or

@@ -27,3 +27,4 @@ scale_config.json
 *.pcapng
 
 .claude
+.capture
