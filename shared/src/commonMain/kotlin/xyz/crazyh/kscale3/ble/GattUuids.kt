@@ -32,6 +32,12 @@ object GattUuids {
     /** 体重单位查询（TECH.md §7.3，官方 App 实测 handle 0x4B；旧 GATT 表未列） */
     const val WEIGHT_UNIT_QUERY = "7e6dbc73-42e7-45b9-a6ec-6aa2d7834695"
 
+    /**
+     * 恢复出厂设置控制点（TECH.md §7.4，官方 App 实测 handle 0x22；Write/Indicate）。
+     * 写通用空载荷 `db0300c140` 即执行复位；语义由本特征决定，勿与查询混淆。
+     */
+    const val FACTORY_RESET = "4599778a-ea8a-4ffe-9499-de1ba7a03f3a"
+
     /** 0x62 设备配置状态（恒回 Code 1） */
     const val CONFIG = "bfc36f6e-4150-4a4b-9052-3d359e52962e"
 

@@ -28,6 +28,13 @@ object ProtocolConstants {
     /** 通用查询/武装命令（空载荷单帧），也是 CRC 端到端黄金向量：`db0300c140`。 */
     val QUERY_ARM: ByteArray = "db0300c140".hexToBytes()
 
+    /**
+     * 恢复出厂设置命令（TECH.md §7.4）：字节与 [QUERY_ARM] 相同（`db0300c140`）。
+     * ⚠️ 语义由目标特征决定——写到 4599778a（[xyz.crazyh.kscale3.ble.GattUuids.FACTORY_RESET]）
+     * 才是复位；写到查询特征只是查询。
+     */
+    val FACTORY_RESET: ByteArray = "db0300c140".hexToBytes()
+
     /** 能力上报串（10 字节原样写入 0xD7，无响应写）。 */
     val CAPABILITY_BYTES: ByteArray = "5a000500013701001ca9".hexToBytes()
 

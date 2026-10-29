@@ -57,6 +57,13 @@ interface ScaleSession {
     suspend fun setWeightUnit(unit: WeightUnit, mac: MacAddress)
 
     /**
+     * 秤恢复出厂设置（TECH.md §7.4：向 `4599778a` 写 `db0300c140`，等 status 0 确认）。
+     * 成功后秤端绑定/用户数据被清除并会主动断开，必须重新配对（Mode 1）；
+     * 调用方应在成功后关闭会话并清除本机配对。失败抛 [SessionException]。
+     */
+    suspend fun factoryReset(mac: MacAddress)
+
+    /**
      * 取消当前进行中的操作（取消 pair/measure/单位读写协程），**保持连接**——
      * 连接与 WorkKey 留给下一次操作复用。
      */

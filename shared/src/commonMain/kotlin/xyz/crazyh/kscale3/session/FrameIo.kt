@@ -175,6 +175,7 @@ internal class FrameIo(
             GattUuids.TIME_SYNC,
             GattUuids.SERIAL,
             GattUuids.WEIGHT_UNIT_QUERY,
+            GattUuids.FACTORY_RESET,
             GattUuids.CONFIG,
             GattUuids.MODEL,
             GattUuids.OFFLINE_HISTORY,
@@ -186,7 +187,8 @@ internal class FrameIo(
             GattUuids.CAPABILITIES_RSP,
         )
 
-        /** 订阅失败即判定断连的特征；其余（如单位查询）失败只记日志。 */
-        val ESSENTIAL_UUIDS = FRAMED_UUIDS.toSet() - GattUuids.WEIGHT_UNIT_QUERY
+        /** 订阅失败即判定断连的特征；其余（如单位查询/恢复出厂设置）失败只记日志。 */
+        val ESSENTIAL_UUIDS =
+            FRAMED_UUIDS.toSet() - setOf(GattUuids.WEIGHT_UNIT_QUERY, GattUuids.FACTORY_RESET)
     }
 }

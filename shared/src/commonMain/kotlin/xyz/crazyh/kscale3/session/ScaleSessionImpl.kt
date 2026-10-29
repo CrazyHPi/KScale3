@@ -104,10 +104,10 @@ class ScaleSessionImpl(
     }
 
     override suspend fun readWeightUnit(mac: MacAddress): WeightUnit =
-        runUnitOperation(mac) { io -> queryWeightUnit(io) }
+        runAuxiliaryOperation(mac) { io -> queryWeightUnit(io) }
 
     override suspend fun setWeightUnit(unit: WeightUnit, mac: MacAddress) {
-        runUnitOperation(mac) { io ->
+        runAuxiliaryOperation(mac) { io ->
             // 无响应写（TECH.md §7.3）；确认是同特征的 Indication `BD 04 00 00`
             io.writeRaw(
                 GattUuids.SERIAL,
@@ -127,6 +127,25 @@ class ScaleSessionImpl(
             // （8 次切换中 6 次如此），导致 UI 闪回旧单位且持久化错误。
             // 单位同步交给「新连接握手后自动查询」和「进入设置页刷新」这两个稳定时机。
             _hardwareInfo.value = _hardwareInfo.value.copy(weightUnit = unit)
+        }
+    }
+
+    override suspend fun factoryReset(mac: MacAddress) {
+        runAuxiliaryOperation(mac) { io ->
+            // 与查询帧字节相同；语义由目标特征 4599778a 决定（TECH.md §7.4）
+            io.writeRaw(
+                GattUuids.FACTORY_RESET,
+                ProtocolConstants.FACTORY_RESET,
+                withResponse = false
+            )
+            val frame =
+                io.await(GattUuids.FACTORY_RESET, "factoryReset", options.timing.factoryReset)
+            val code = statusCode(frame, "factoryReset")
+            if (code != 0) throw SessionException(
+                SessionError.UnexpectedReply("factoryReset", code)
+            )
+            // status 0 后秤会主动断开并清除绑定；断连由调用方 close() 收尾，
+            // 本次操作不在此等待（避免与断连 watcher 竞争）。
         }
     }
 
@@ -335,10 +354,11 @@ class ScaleSessionImpl(
     }
 
     /**
-     * 单位控制：复用持久连接执行一次读/写；结束后状态回到 [SessionState.Idle]（不进称重屏的错误条）。
+     * 轻量控制操作（单位读写、恢复出厂设置）：复用持久连接执行一次命令；
+     * 结束后状态回到 [SessionState.Idle]（不进称重屏的错误条）。
      * 会话骨架与配对/称重共用（按需连接/握手、断连 watcher、帧日志），但不断开连接。
      */
-    private suspend fun <T> runUnitOperation(
+    private suspend fun <T> runAuxiliaryOperation(
         mac: MacAddress,
         block: suspend (io: FrameIo) -> T,
     ): T = try {

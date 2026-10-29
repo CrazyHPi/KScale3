@@ -3,8 +3,10 @@ package xyz.crazyh.kscale3.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -45,7 +47,8 @@ import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 /**
  * 设置屏（PLAN UI-6）：设备信息（MAC/型号/序列号 + 用户 HUID 打码）、
- * 秤显示单位（TECH.md §7.3）、调试开关（帧日志屏，默认关；日志仅帧 hex——载荷均加密、MAC 不上线）。
+ * 秤显示单位（TECH.md §7.3）、秤恢复出厂设置（TECH.md §7.4；成功后清本机配对并回扫描页）、
+ * 调试开关（帧日志屏，默认关；日志仅帧 hex——载荷均加密、MAC 不上线）。
  * "重新注册"入口在用户管理页（每档案独立 HUID）。
  *
  * @param onForgetDevice 忘记设备并清库后回调（调用方跳回扫描配对页）
@@ -60,6 +63,8 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
     val weightUnit by vm.weightUnit.collectAsState()
     val unitBusy by vm.unitBusy.collectAsState()
     val unitError by vm.unitError.collectAsState()
+    val resetBusy by vm.resetBusy.collectAsState()
+    val resetError by vm.resetError.collectAsState()
     val scope = rememberCoroutineScope()
 
     // 进入设置屏时向秤查询当前单位（未配对/会话进行中时 VM 内部忽略）
@@ -76,7 +81,14 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
         weightUnit = weightUnit,
         unitBusy = unitBusy,
         unitError = unitError,
+        resetBusy = resetBusy,
+        resetError = resetError,
         onSetWeightUnit = vm::setWeightUnit,
+        onFactoryReset = {
+            scope.launch {
+                if (vm.factoryReset()) onForgetDevice()
+            }
+        },
         onForgetDevice = {
             scope.launch {
                 vm.forgetDevice()
@@ -97,11 +109,15 @@ private fun SettingsContent(
     weightUnit: WeightUnit?,
     unitBusy: Boolean,
     unitError: String?,
+    resetBusy: Boolean,
+    resetError: String?,
     onSetWeightUnit: (WeightUnit) -> Unit,
+    onFactoryReset: () -> Unit,
     onForgetDevice: () -> Unit,
 ) {
     var showDebugInfo by remember { mutableStateOf(false) }
     var confirmForget by remember { mutableStateOf(false) }
+    var confirmFactoryReset by remember { mutableStateOf(false) }
     var showUnitPicker by remember { mutableStateOf(false) }
 
     Column(
@@ -142,8 +158,6 @@ private fun SettingsContent(
             )
         }
 
-        //todo device reset, not planned yet
-
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
         SectionTitle("已注册用户")
@@ -168,6 +182,24 @@ private fun SettingsContent(
             modifier = Modifier.align(Alignment.CenterHorizontally),
         ) {
             Text("忘记已配对的秤")
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = { confirmFactoryReset = true },
+            enabled = device != null && !busy,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        ) {
+            Text(if (resetBusy) "正在恢复出厂设置…" else "秤恢复出厂设置")
+        }
+        resetError?.let {
+            Text(
+                it,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
@@ -260,6 +292,33 @@ private fun SettingsContent(
             },
         )
     }
+
+    if (confirmFactoryReset) {
+        AlertDialog(
+            onDismissRequest = { confirmFactoryReset = false },
+            title = { Text("秤恢复出厂设置？") },
+            text = {
+                Text(
+                    "将清除秤上的绑定与用户数据\n" +
+                            "本机配对也会被移除，需要重新配对并注册用户\n" +
+                            "本机用户档案与历史体重不会被清除",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmFactoryReset = false
+                        onFactoryReset()
+                    },
+                ) {
+                    Text("恢复出厂设置", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmFactoryReset = false }) { Text("取消") }
+            },
+        )
+    }
 }
 
 @Preview
@@ -280,7 +339,10 @@ private fun SettingsScreenPreview() {
             weightUnit = WeightUnit.Kg,
             unitBusy = false,
             unitError = null,
+            resetBusy = false,
+            resetError = null,
             onSetWeightUnit = {},
+            onFactoryReset = {},
             onForgetDevice = {},
         )
     }

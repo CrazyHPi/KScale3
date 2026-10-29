@@ -159,7 +159,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
      * 清空后 [deviceState] 变为 [DeviceState.None]，调用方跳回扫描配对页。
      */
     suspend fun forgetDevice() {
-        if (_busy.value || _unitBusy.value) return
+        if (_busy.value || _unitBusy.value || _resetBusy.value) return
         closeSession()
         container.deviceRepository.clear()
     }
@@ -268,9 +268,16 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private val _unitError = MutableStateFlow<String?>(null)
     val unitError: StateFlow<String?> = _unitError.asStateFlow()
 
-    /** 任一会话（称重/注册/单位读写）进行中——UI 用它禁用入口，避免同一时刻两条 BLE 会话。 */
+    /** 恢复出厂设置的进行中标记/错误（独立于单位设置，错误显示在对应按钮下方）。 */
+    private val _resetBusy = MutableStateFlow(false)
+    val resetBusy: StateFlow<Boolean> = _resetBusy.asStateFlow()
+
+    private val _resetError = MutableStateFlow<String?>(null)
+    val resetError: StateFlow<String?> = _resetError.asStateFlow()
+
+    /** 任一会话（称重/注册/单位读写/恢复出厂设置）进行中——UI 用它禁用入口，避免同一时刻两条 BLE 会话。 */
     val busyOrUnit: StateFlow<Boolean> =
-        combine(_busy, _unitBusy) { session, unit -> session || unit }
+        combine(_busy, _unitBusy, _resetBusy) { session, unit, reset -> session || unit || reset }
             .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
@@ -285,10 +292,34 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     /** 设置秤显示单位（选中即乐观显示 [unit]；失败回落到原值并显示 [unitError]）。 */
     fun setWeightUnit(unit: WeightUnit) {
         val device = device.value ?: return
-        if (_unitBusy.value || _busy.value) return
+        if (_unitBusy.value || _busy.value || _resetBusy.value) return
         // 立即反馈所选单位：连接/握手/等待确认期间不再显示旧值
         _pendingUnit.value = unit
         runUnitOperation(device, reportError = true) { it.setWeightUnit(unit, device.mac) }
+    }
+
+    /**
+     * 秤恢复出厂设置：成功后秤端绑定被清除，本机配对也一并移除并关闭会话；
+     * 返回 true 时调用方跳回扫描配对页（与官方 App 行为一致）。
+     * 失败只设置 [resetError]，不影响本机配对。
+     */
+    suspend fun factoryReset(): Boolean {
+        if (_busy.value || _unitBusy.value || _resetBusy.value) return false
+        val device = device.value ?: return false
+        _resetBusy.value = true
+        _resetError.value = null
+        return try {
+            val s = obtainSession(device)
+            s.factoryReset(device.mac)
+            closeSession()
+            container.deviceRepository.clear()
+            true
+        } catch (e: SessionException) {
+            _resetError.value = errorText(e.error)
+            false
+        } finally {
+            _resetBusy.value = false
+        }
     }
 
     private fun runUnitOperation(
@@ -296,7 +327,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         reportError: Boolean,
         block: suspend (ScaleSession) -> Unit,
     ) {
-        if (_unitBusy.value || _busy.value) return
+        if (_unitBusy.value || _busy.value || _resetBusy.value) return
         _unitBusy.value = true
         _unitError.value = null
         viewModelScope.launch {
@@ -364,7 +395,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     private fun launchOperation(block: suspend (ScaleSession, String) -> Unit) {
-        if (_busy.value || _unitBusy.value) return
+        if (_busy.value || _unitBusy.value || _resetBusy.value) return
         val device = device.value ?: return // 未配对设备：UI 层禁用入口
         // 帧日志进 VM（SettingsScreen 调试屏消费）+ println 落 logcat 便于真机诊断
         // （日志仅帧 hex——载荷均加密、MAC 不上线）
