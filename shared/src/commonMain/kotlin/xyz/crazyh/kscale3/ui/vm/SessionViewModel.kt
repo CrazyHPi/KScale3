@@ -156,10 +156,12 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
 
     /**
      * 忘记已配对的秤：仅清 `paired_device`（用户档案/HUID/测量记录保留）。
+     * 纯本地操作，不需要连接：可打断进行中的单位查询/会话（[closeSession] 取消）。
+     * 恢复出厂设置进行中不打断——它成功后自行清库并跳转。
      * 清空后 [deviceState] 变为 [DeviceState.None]，调用方跳回扫描配对页。
      */
     suspend fun forgetDevice() {
-        if (_busy.value || _unitBusy.value || _resetBusy.value) return
+        if (_resetBusy.value) return
         closeSession()
         container.deviceRepository.clear()
     }

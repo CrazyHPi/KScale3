@@ -177,7 +177,7 @@ private fun SettingsContent(
 
         OutlinedButton(
             onClick = { confirmForget = true },
-            enabled = !busy,
+            enabled = device != null && !resetBusy,
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
             modifier = Modifier.align(Alignment.CenterHorizontally),
         ) {
@@ -274,7 +274,7 @@ private fun SettingsContent(
                 Text(
                     "将清除本机保存的秤\n" +
                             "再次连接需要重新配对\n" +
-                            "用户档案与历史体重不会被清楚",
+                            "用户档案与历史体重不会被清除",
                 )
             },
             confirmButton = {
