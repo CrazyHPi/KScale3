@@ -1,0 +1,5 @@
+-- 2026-11-10: 应用设置键值表（首个用途：界面语言 LanguageSetting.storageValue）
+CREATE TABLE app_setting (
+    setting_key TEXT NOT NULL PRIMARY KEY,
+    setting_value TEXT NOT NULL
+);

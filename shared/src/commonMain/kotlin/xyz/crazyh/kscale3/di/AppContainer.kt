@@ -9,8 +9,10 @@ import xyz.crazyh.kscale3.ble.createKablePeripheral
 import xyz.crazyh.kscale3.data.db.DriverFactory
 import xyz.crazyh.kscale3.data.db.KScale3Database
 import xyz.crazyh.kscale3.data.db.createDatabase
+import xyz.crazyh.kscale3.data.repository.AppSettingsRepository
 import xyz.crazyh.kscale3.data.repository.DeviceRepository
 import xyz.crazyh.kscale3.data.repository.MeasurementRepository
+import xyz.crazyh.kscale3.data.repository.SqlAppSettingsRepository
 import xyz.crazyh.kscale3.data.repository.SqlDeviceRepository
 import xyz.crazyh.kscale3.data.repository.SqlMeasurementRepository
 import xyz.crazyh.kscale3.data.repository.SqlUserRepository
@@ -32,6 +34,8 @@ class AppContainer(private val driverFactory: DriverFactory) {
     val measurementRepository: MeasurementRepository by lazy { SqlMeasurementRepository(database) }
 
     val deviceRepository: DeviceRepository by lazy { SqlDeviceRepository(database) }
+
+    val appSettingsRepository: AppSettingsRepository by lazy { SqlAppSettingsRepository(database) }
 
     /** 扫描（疑似秤置顶由 UI 层排序，不按名称过滤）。 */
     fun createBleScanner(): BleScanner = KableBleScanner(Scanner { })

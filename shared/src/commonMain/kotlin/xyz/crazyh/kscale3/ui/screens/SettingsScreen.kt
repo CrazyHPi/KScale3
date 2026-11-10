@@ -32,13 +32,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import xyz.crazyh.kscale3.domain.LanguageSetting
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.domain.WeightUnit
 import xyz.crazyh.kscale3.session.HardwareInfo
+import xyz.crazyh.kscale3.session.SessionError
 import xyz.crazyh.kscale3.ui.components.MetricRow
 import xyz.crazyh.kscale3.ui.components.SectionTitle
 import xyz.crazyh.kscale3.ui.components.SettingEntry
+import xyz.crazyh.kscale3.ui.i18n.AppLanguage
+import xyz.crazyh.kscale3.ui.i18n.LocalStrings
+import xyz.crazyh.kscale3.ui.i18n.errorText
+import xyz.crazyh.kscale3.ui.i18n.languageOptionName
+import xyz.crazyh.kscale3.ui.i18n.languageSettingValue
+import xyz.crazyh.kscale3.ui.i18n.weightUnitName
 import xyz.crazyh.kscale3.ui.maskHuid
 import xyz.crazyh.kscale3.ui.preview.previewDevice
 import xyz.crazyh.kscale3.ui.preview.previewHardwareInfo
@@ -54,7 +62,13 @@ import xyz.crazyh.kscale3.ui.vm.SessionViewModel
  * @param onForgetDevice 忘记设备并清库后回调（调用方跳回扫描配对页）
  */
 @Composable
-fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
+fun SettingsScreen(
+    vm: SessionViewModel,
+    languageSetting: LanguageSetting,
+    effectiveLanguage: AppLanguage,
+    onSetLanguage: (LanguageSetting) -> Unit,
+    onForgetDevice: () -> Unit,
+) {
     val device by vm.device.collectAsState()
     val users by vm.users.collectAsState()
     val info by vm.hardwareInfo.collectAsState()
@@ -83,7 +97,10 @@ fun SettingsScreen(vm: SessionViewModel, onForgetDevice: () -> Unit) {
         unitError = unitError,
         resetBusy = resetBusy,
         resetError = resetError,
+        languageSetting = languageSetting,
+        effectiveLanguage = effectiveLanguage,
         onSetWeightUnit = vm::setWeightUnit,
+        onSetLanguage = onSetLanguage,
         onFactoryReset = {
             scope.launch {
                 if (vm.factoryReset()) onForgetDevice()
@@ -108,10 +125,13 @@ private fun SettingsContent(
     busy: Boolean,
     weightUnit: WeightUnit?,
     unitBusy: Boolean,
-    unitError: String?,
+    unitError: SessionError?,
     resetBusy: Boolean,
-    resetError: String?,
+    resetError: SessionError?,
+    languageSetting: LanguageSetting,
+    effectiveLanguage: AppLanguage,
     onSetWeightUnit: (WeightUnit) -> Unit,
+    onSetLanguage: (LanguageSetting) -> Unit,
     onFactoryReset: () -> Unit,
     onForgetDevice: () -> Unit,
 ) {
@@ -119,19 +139,21 @@ private fun SettingsContent(
     var confirmForget by remember { mutableStateOf(false) }
     var confirmFactoryReset by remember { mutableStateOf(false) }
     var showUnitPicker by remember { mutableStateOf(false) }
+    var showLanguagePicker by remember { mutableStateOf(false) }
+    val strings = LocalStrings.current
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
-        Text("设置", style = MaterialTheme.typography.headlineSmall)
+        Text(strings.settingsTitle, style = MaterialTheme.typography.headlineSmall)
 
-        SectionTitle("设备信息")
+        SectionTitle(strings.settingsDeviceInfo)
         if (device == null) {
-            Text("尚未配对设备。", color = MaterialTheme.colorScheme.error)
+            Text(strings.settingsNoDevice, color = MaterialTheme.colorScheme.error)
         } else {
-            MetricRow("名称", device.name)
-            MetricRow("MAC 地址", device.mac)
-            if (device.bleId != device.mac) MetricRow("BLE 标识", device.bleId)
+            MetricRow(strings.settingsName, device.name)
+            MetricRow(strings.settingsMac, device.mac)
+            if (device.bleId != device.mac) MetricRow(strings.settingsBleId, device.bleId)
 
             // hide extra info for now, not needed i think
 //            MetricRow("型号", info.model ?: device.model ?: "—")
@@ -143,8 +165,9 @@ private fun SettingsContent(
 
         // 秤显示单位（TECH.md §7.3：0x5A 设置 / 7e6dbc73 查询）
         SettingEntry(
-            name = "秤显示单位",
-            value = weightUnit?.label ?: if (unitBusy) "连接秤..." else null,
+            name = strings.settingsWeightUnit,
+            value = weightUnit?.let { strings.weightUnitName(it) }
+                ?: if (unitBusy) strings.settingsConnectingScale else null,
             // 读写单位本身也在 busy 内（busyOrUnit）
             enabled = device != null && !busy,
         ) {
@@ -152,7 +175,7 @@ private fun SettingsContent(
         }
         unitError?.let {
             Text(
-                it,
+                strings.errorText(it),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -160,10 +183,10 @@ private fun SettingsContent(
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
-        SectionTitle("已注册用户")
+        SectionTitle(strings.settingsRegisteredUsers)
         val registered = users.filter { it.huid != null }
         if (registered.isEmpty()) {
-            Text("暂无——可在「用户」页注册到秤。", style = MaterialTheme.typography.bodySmall)
+            Text(strings.settingsNoRegisteredUsers, style = MaterialTheme.typography.bodySmall)
         } else {
             registered.forEach { user ->
                 MetricRow(
@@ -181,7 +204,7 @@ private fun SettingsContent(
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
             modifier = Modifier.align(Alignment.CenterHorizontally),
         ) {
-            Text("忘记已配对的秤")
+            Text(strings.settingsForgetDevice)
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -192,11 +215,11 @@ private fun SettingsContent(
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
             modifier = Modifier.align(Alignment.CenterHorizontally),
         ) {
-            Text(if (resetBusy) "正在恢复出厂设置…" else "秤恢复出厂设置")
+            Text(if (resetBusy) strings.settingsFactoryResetting else strings.settingsFactoryReset)
         }
         resetError?.let {
             Text(
-                it,
+                strings.errorText(it),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -204,14 +227,21 @@ private fun SettingsContent(
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
+        SettingEntry(
+            name = strings.settingsLanguage,
+            value = strings.languageSettingValue(languageSetting, effectiveLanguage),
+        ) {
+            showLanguagePicker = true
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("调试模式", modifier = Modifier.weight(1f))
+            Text(strings.settingsDebugMode, modifier = Modifier.weight(1f))
             Switch(checked = showDebugInfo, onCheckedChange = { showDebugInfo = it })
         }
 
         if (showDebugInfo) {
             Text(
-                "日志 仅显示帧 (hex)",
+                strings.settingsLogFramesOnly,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -221,7 +251,7 @@ private fun SettingsContent(
             ) {
                 if (log.isEmpty()) {
                     Text(
-                        "（暂无——发起一次称重/注册后显示）",
+                        strings.settingsLogEmpty,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -235,7 +265,7 @@ private fun SettingsContent(
     if (showUnitPicker) {
         AlertDialog(
             onDismissRequest = { showUnitPicker = false },
-            title = { Text("秤显示单位") },
+            title = { Text(strings.settingsWeightUnit) },
             text = {
                 Column {
                     WeightUnit.entries.forEach { unit ->
@@ -255,13 +285,55 @@ private fun SettingsContent(
                                     onSetWeightUnit(unit)
                                 },
                             )
-                            Text(unit.label, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                strings.weightUnitName(unit),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showUnitPicker = false }) { Text("取消") }
+                TextButton(onClick = { showUnitPicker = false }) { Text(strings.commonCancel) }
+            },
+        )
+    }
+
+    if (showLanguagePicker) {
+        AlertDialog(
+            onDismissRequest = { showLanguagePicker = false },
+            title = { Text(strings.settingsLanguage) },
+            text = {
+                Column {
+                    LanguageSetting.entries.forEach { option ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable {
+                                    showLanguagePicker = false
+                                    onSetLanguage(option)
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = option == languageSetting,
+                                onClick = {
+                                    showLanguagePicker = false
+                                    onSetLanguage(option)
+                                },
+                            )
+                            Text(
+                                strings.languageOptionName(option),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLanguagePicker = false }) {
+                    Text(strings.commonCancel)
+                }
             },
         )
     }
@@ -269,14 +341,8 @@ private fun SettingsContent(
     if (confirmForget) {
         AlertDialog(
             onDismissRequest = { confirmForget = false },
-            title = { Text("忘记已配对的秤？") },
-            text = {
-                Text(
-                    "将清除本机保存的秤\n" +
-                            "再次连接需要重新配对\n" +
-                            "用户档案与历史体重不会被清除",
-                )
-            },
+            title = { Text(strings.settingsForgetDeviceTitle) },
+            text = { Text(strings.settingsForgetDeviceMessage) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -284,11 +350,11 @@ private fun SettingsContent(
                         onForgetDevice()
                     },
                 ) {
-                    Text("忘记", color = MaterialTheme.colorScheme.error)
+                    Text(strings.settingsForgetConfirm, color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmForget = false }) { Text("取消") }
+                TextButton(onClick = { confirmForget = false }) { Text(strings.commonCancel) }
             },
         )
     }
@@ -296,14 +362,8 @@ private fun SettingsContent(
     if (confirmFactoryReset) {
         AlertDialog(
             onDismissRequest = { confirmFactoryReset = false },
-            title = { Text("秤恢复出厂设置？") },
-            text = {
-                Text(
-                    "将清除秤上的绑定与用户数据\n" +
-                            "本机配对也会被移除，需要重新配对并注册用户\n" +
-                            "本机用户档案与历史体重不会被清除",
-                )
-            },
+            title = { Text(strings.settingsFactoryResetTitle) },
+            text = { Text(strings.settingsFactoryResetMessage) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -311,11 +371,16 @@ private fun SettingsContent(
                         onFactoryReset()
                     },
                 ) {
-                    Text("恢复出厂设置", color = MaterialTheme.colorScheme.error)
+                    Text(
+                        strings.settingsFactoryResetConfirm,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmFactoryReset = false }) { Text("取消") }
+                TextButton(onClick = { confirmFactoryReset = false }) {
+                    Text(strings.commonCancel)
+                }
             },
         )
     }
@@ -341,7 +406,10 @@ private fun SettingsScreenPreview() {
             unitError = null,
             resetBusy = false,
             resetError = null,
+            languageSetting = LanguageSetting.System,
+            effectiveLanguage = AppLanguage.Chinese,
             onSetWeightUnit = {},
+            onSetLanguage = {},
             onFactoryReset = {},
             onForgetDevice = {},
         )

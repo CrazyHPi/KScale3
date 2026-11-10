@@ -30,10 +30,11 @@ import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.session.SessionError
 import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.components.SessionProgressDialog
-import xyz.crazyh.kscale3.ui.errorText
+import xyz.crazyh.kscale3.ui.i18n.LocalStrings
+import xyz.crazyh.kscale3.ui.i18n.errorText
+import xyz.crazyh.kscale3.ui.i18n.sessionGuide
 import xyz.crazyh.kscale3.ui.preview.previewDevice
 import xyz.crazyh.kscale3.ui.preview.previewUsers
-import xyz.crazyh.kscale3.ui.sessionGuide
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 /**
@@ -83,6 +84,7 @@ private fun WeighInContent(
     onGoDevice: () -> Unit,
 ) {
     var selected by remember { mutableStateOf<UserProfile?>(null) }
+    val strings = LocalStrings.current
 
     // 用户可能在其他 Tab 被删除：列表刷新后清掉失效选择，避免用已删档案发起会话
     LaunchedEffect(users) {
@@ -91,12 +93,12 @@ private fun WeighInContent(
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("开始称重", style = MaterialTheme.typography.headlineSmall)
+        Text(strings.weighTitle, style = MaterialTheme.typography.headlineSmall)
 
         // 已保存设备常驻显示：冷启动不再经过扫描页，用户能确认配对仍在
         device?.let {
             Text(
-                "当前配对设备：${it.name}",
+                strings.weighCurrentDevice(it.name),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -104,14 +106,14 @@ private fun WeighInContent(
 
         if (device == null) {
             Text(
-                "尚未配对设备——请先在「设备」页扫描配对。",
+                strings.weighNoDevice,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
-            Button(onClick = onGoDevice) { Text("去配对设备") }
+            Button(onClick = onGoDevice) { Text(strings.weighGoPair) }
         }
 
-        SectionTitle2("选择用户")
+        SectionTitle2(strings.weighSelectUser)
         LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
             items(users, key = { it.id }) { user ->
                 Card(
@@ -128,7 +130,8 @@ private fun WeighInContent(
                         Column(Modifier.weight(1f)) {
                             Text(user.name, fontWeight = FontWeight.Bold)
                             Text(
-                                if (user.huid != null) "已注册" else "未注册（需先注册到秤）",
+                                if (user.huid != null) strings.usersRegistered
+                                else strings.weighUnregistered,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -141,7 +144,7 @@ private fun WeighInContent(
         when (val s = sessionState) {
             is SessionState.Failed -> {
                 Text(
-                    errorText(s.error),
+                    strings.errorText(s.error),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
@@ -154,12 +157,21 @@ private fun WeighInContent(
                 )
             }
 
-            is SessionState.Done -> Text(sessionGuide(s), color = MaterialTheme.colorScheme.primary)
+            is SessionState.Done -> Text(
+                strings.sessionGuide(s),
+                color = MaterialTheme.colorScheme.primary,
+            )
+
             SessionState.Idle, SessionState.Connecting, SessionState.Handshaking,
             SessionState.AwaitingTare, SessionState.SyncingTime, SessionState.SendingProfile,
             is SessionState.ProfileResponded, SessionState.AwaitingMeasurement,
             SessionState.Committing, is SessionState.Paired,
-                -> if (busy) Text(sessionGuide(s), modifier = Modifier.padding(vertical = 4.dp))
+                -> if (busy) {
+                Text(
+                    strings.sessionGuide(s),
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+            }
         }
 
         Button(
@@ -167,7 +179,7 @@ private fun WeighInContent(
             enabled = device != null && selected?.huid != null && !busy,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
-            Text("开始称重（Mode 2）")
+            Text(strings.weighStart)
         }
     }
 
@@ -217,19 +229,24 @@ private fun RecoveryRow(
     onChangeUser: () -> Unit,
     onGoDevice: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     Row {
         when (error) {
-            SessionError.MissingTare -> Button(onClick = onGoRegister) { Text("去注册（补验证称重）") }
+            SessionError.MissingTare ->
+                Button(onClick = onGoRegister) { Text(strings.weighRecoveryGoRegister) }
+
             SessionError.UserNotRecognised -> {
-                Button(onClick = onGoRegister) { Text("重新注册") }
+                Button(onClick = onGoRegister) { Text(strings.weighRecoveryReRegister) }
                 OutlinedButton(
                     onClick = onChangeUser,
                     modifier = Modifier.padding(start = 8.dp)
-                ) { Text("换人") }
+                ) { Text(strings.weighRecoveryChangeUser) }
             }
 
-            SessionError.MacInvalid -> Button(onClick = onGoDevice) { Text("修改 MAC") }
-            else -> Button(onClick = onRetry) { Text("重试") }
+            SessionError.MacInvalid ->
+                Button(onClick = onGoDevice) { Text(strings.weighRecoveryEditMac) }
+
+            else -> Button(onClick = onRetry) { Text(strings.commonRetry) }
         }
     }
 }

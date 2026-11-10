@@ -24,10 +24,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import androidx.compose.ui.tooling.preview.Preview
 import xyz.crazyh.kscale3.di.AppContainer
 import xyz.crazyh.kscale3.domain.Sex
 import xyz.crazyh.kscale3.domain.UserProfile
@@ -35,9 +35,13 @@ import xyz.crazyh.kscale3.domain.UserProfileDraft
 import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.components.SessionProgressDialog
 import xyz.crazyh.kscale3.ui.components.rounded
+import xyz.crazyh.kscale3.ui.i18n.LocalStrings
 import xyz.crazyh.kscale3.ui.maskHuid
 import xyz.crazyh.kscale3.ui.preview.previewUsers
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
+
+/** 表单校验错误（存原因而非已渲染文案，切换语言后可重新映射）。 */
+private enum class EditError { NameRequired, AgeRange, HeightRange, GoalFormat }
 
 /**
  * 用户编辑/新建屏（PLAN UI-2）：姓名/性别/年龄/身高/目标体重表单 + 保存；
@@ -108,17 +112,18 @@ private fun UserEditContent(
     var age by remember(loaded) { mutableStateOf(loaded?.age?.toString() ?: "30") }
     var height by remember(loaded) { mutableStateOf(loaded?.heightCm?.toString() ?: "170") }
     var goal by remember(loaded) { mutableStateOf(loaded?.goalWeightKg?.rounded(1) ?: "") }
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<EditError?>(null) }
+    val strings = LocalStrings.current
 
     fun save() {
         val ageInt = age.toIntOrNull()
         val heightInt = height.toIntOrNull()
         val goalDouble = goal.trim().toDoubleOrNull()
         when {
-            name.isBlank() -> error = "请输入姓名"
-            ageInt == null || ageInt !in 10..120 -> error = "年龄应为 10–120"
-            heightInt == null || heightInt !in 80..230 -> error = "身高应为 80–230 cm"
-            goal.isNotBlank() && goalDouble == null -> error = "目标体重格式无效"
+            name.isBlank() -> error = EditError.NameRequired
+            ageInt == null || ageInt !in 10..120 -> error = EditError.AgeRange
+            heightInt == null || heightInt !in 80..230 -> error = EditError.HeightRange
+            goal.isNotBlank() && goalDouble == null -> error = EditError.GoalFormat
             else -> {
                 error = null
                 onSave(
@@ -138,30 +143,34 @@ private fun UserEditContent(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
         Text(
-            if (isNew) "新建用户" else "编辑用户",
+            if (isNew) strings.editNewTitle else strings.editTitle,
             style = MaterialTheme.typography.headlineSmall,
         )
 
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
-            label = { Text("姓名") },
+            label = { Text(strings.editName) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
         )
         Row(Modifier.padding(top = 8.dp)) {
-            FilterChip(selected = male, onClick = { male = true }, label = { Text("男") })
+            FilterChip(
+                selected = male,
+                onClick = { male = true },
+                label = { Text(strings.editMale) },
+            )
             FilterChip(
                 selected = !male,
                 onClick = { male = false },
-                label = { Text("女") },
+                label = { Text(strings.editFemale) },
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
         OutlinedTextField(
             value = age,
             onValueChange = { age = it },
-            label = { Text("年龄") },
+            label = { Text(strings.editAge) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -169,7 +178,7 @@ private fun UserEditContent(
         OutlinedTextField(
             value = height,
             onValueChange = { height = it },
-            label = { Text("身高（cm）") },
+            label = { Text(strings.editHeight) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -177,21 +186,26 @@ private fun UserEditContent(
         OutlinedTextField(
             value = goal,
             onValueChange = { goal = it },
-            label = { Text("目标体重（kg，可空）") },
+            label = { Text(strings.editGoal) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         )
 
-        error?.let {
+        error?.let { e ->
             Text(
-                it,
+                when (e) {
+                    EditError.NameRequired -> strings.editErrorNameRequired
+                    EditError.AgeRange -> strings.editErrorAgeRange
+                    EditError.HeightRange -> strings.editErrorHeightRange
+                    EditError.GoalFormat -> strings.editErrorGoalFormat
+                },
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
         loaded?.huid?.let {
-            Text("HUID：${maskHuid(it)}（已注册）", style = MaterialTheme.typography.bodySmall)
+            Text(strings.editHuidLine(maskHuid(it)), style = MaterialTheme.typography.bodySmall)
         }
 
         Button(
@@ -199,7 +213,7 @@ private fun UserEditContent(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             enabled = !busy,
         ) {
-            Text("保存")
+            Text(strings.commonSave)
         }
         if (!isNew && loaded != null) {
             Button(
@@ -207,7 +221,10 @@ private fun UserEditContent(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 enabled = !busy,
             ) {
-                Text(if (loaded.huid != null) "重新注册到秤（生成新 HUID）" else "注册到秤（Mode 1）")
+                Text(
+                    if (loaded.huid != null) strings.editReRegisterNewHuid
+                    else strings.editRegisterMode1
+                )
             }
         }
         OutlinedButton(
@@ -215,7 +232,7 @@ private fun UserEditContent(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             enabled = !busy,
         ) {
-            Text("返回")
+            Text(strings.commonBack)
         }
     }
 

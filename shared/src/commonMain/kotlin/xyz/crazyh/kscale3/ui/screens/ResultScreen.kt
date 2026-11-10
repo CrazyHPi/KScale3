@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import xyz.crazyh.kscale3.ui.components.MeasurementDetail
+import xyz.crazyh.kscale3.ui.i18n.LocalStrings
 import xyz.crazyh.kscale3.ui.preview.previewResult
 import xyz.crazyh.kscale3.ui.vm.PendingMeasurement
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
@@ -46,11 +47,12 @@ private fun ResultContent(
     onDone: () -> Unit,
 ) {
     val saved = pending == null
+    val strings = LocalStrings.current
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
-        Text("测量结果", style = MaterialTheme.typography.headlineSmall)
+        Text(strings.resultTitle, style = MaterialTheme.typography.headlineSmall)
 
         if (pending == null) {
             onDone()
@@ -58,7 +60,7 @@ private fun ResultContent(
         }
 
         val r = pending.result
-        Text("设备时间：${r.deviceTs}", style = MaterialTheme.typography.bodySmall)
+        Text(strings.deviceTime(r.deviceTs), style = MaterialTheme.typography.bodySmall)
 
         MeasurementDetail(
             weightKg = r.weightKg,
@@ -75,7 +77,7 @@ private fun ResultContent(
                 },
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             ) {
-                Text("保存入库")
+                Text(strings.resultSave)
             }
         }
     }

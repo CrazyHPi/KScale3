@@ -1,0 +1,14 @@
+-- 应用级键值设置（首个用途：界面语言 LanguageSetting.storageValue）
+CREATE TABLE app_setting (
+    setting_key TEXT NOT NULL PRIMARY KEY,
+    setting_value TEXT NOT NULL
+);
+
+selectValue:
+SELECT setting_value
+FROM app_setting
+WHERE setting_key = ?;
+
+upsert:
+INSERT OR REPLACE INTO app_setting(setting_key, setting_value)
+VALUES (?, ?);

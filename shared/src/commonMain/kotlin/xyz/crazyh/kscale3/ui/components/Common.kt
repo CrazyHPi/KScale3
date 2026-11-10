@@ -26,7 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import xyz.crazyh.kscale3.domain.BodyCompositionEstimates
 import xyz.crazyh.kscale3.session.SessionState
-import xyz.crazyh.kscale3.ui.sessionGuide
+import xyz.crazyh.kscale3.ui.i18n.LocalStrings
+import xyz.crazyh.kscale3.ui.i18n.sessionGuide
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
@@ -130,24 +131,25 @@ fun MeasurementDetail(
     heartRate: Int,
     estimates: BodyCompositionEstimates,
 ) {
-    SectionTitle("真值（秤直接测量）")
-    MetricCard(title = "身体数据") {
-        MetricRow("体重", "${weightKg.rounded(2)} kg")
-        MetricRow("体脂率", "${fatPct.rounded(1)} %")
-        MetricRow("心率", "${heartRate} bpm")
+    val strings = LocalStrings.current
+    SectionTitle(strings.measurementTrueSection)
+    MetricCard(title = strings.measurementBodyCard) {
+        MetricRow(strings.metricWeight, "${weightKg.rounded(2)} kg")
+        MetricRow(strings.metricFatPct, "${fatPct.rounded(1)} %")
+        MetricRow(strings.metricHeartRate, "${heartRate} bpm")
     }
 
-    SectionTitle("估算值（经验公式，仅供参考）")
-    MetricCard(title = "体成分", badge = "估算值") {
-        MetricRow("去脂体重", "${(weightKg - estimates.fatMassKg).rounded(2)} kg")
-        MetricRow("脂肪量", "${estimates.fatMassKg.rounded(2)} kg")
-        MetricRow("体水分", "${estimates.tbwKg.rounded(2)} kg")
-        MetricRow("肌肉量", "${estimates.muscleKg.rounded(2)} kg")
-        MetricRow("骨量", "${estimates.boneKg.rounded(2)} kg")
+    SectionTitle(strings.measurementEstimatesSection)
+    MetricCard(title = strings.measurementCompositionCard, badge = strings.estimateBadge) {
+        MetricRow(strings.metricFatFreeMass, "${(weightKg - estimates.fatMassKg).rounded(2)} kg")
+        MetricRow(strings.metricFatMass, "${estimates.fatMassKg.rounded(2)} kg")
+        MetricRow(strings.metricBodyWater, "${estimates.tbwKg.rounded(2)} kg")
+        MetricRow(strings.metricMuscleMass, "${estimates.muscleKg.rounded(2)} kg")
+        MetricRow(strings.metricBoneMass, "${estimates.boneKg.rounded(2)} kg")
     }
-    MetricCard(title = "其他", badge = "估算值") {
-        MetricRow("BMI", estimates.bmi.rounded(1))
-        MetricRow("基础代谢", "${estimates.bmr.rounded(0)} kcal")
+    MetricCard(title = strings.measurementOtherCard, badge = strings.estimateBadge) {
+        MetricRow(strings.metricBmi, estimates.bmi.rounded(1))
+        MetricRow(strings.metricBmr, "${estimates.bmr.rounded(0)} kcal")
     }
 }
 
@@ -168,17 +170,18 @@ fun SessionProgressDialog(
     // 「隐藏」只收起对话框、不打断会话；进入新的进行中状态时自动重新出现
     var dismissed by remember(state) { mutableStateOf(false) }
     if (!visible || dismissed) return
+    val strings = LocalStrings.current
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("称重/注册") },
+        title = { Text(strings.sessionDialogTitle) },
         text = {
             Column {
-                Text(sessionGuide(state))
+                Text(strings.sessionGuide(state))
                 LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 16.dp))
             }
         },
         confirmButton = {
-            TextButton(onClick = onCancel) { Text("取消") }
+            TextButton(onClick = onCancel) { Text(strings.commonCancel) }
         },
         dismissButton = {
             TextButton(
@@ -186,7 +189,7 @@ fun SessionProgressDialog(
                     dismissed = true
                     onDismiss()
                 },
-            ) { Text("隐藏") }
+            ) { Text(strings.commonHide) }
         },
     )
 }

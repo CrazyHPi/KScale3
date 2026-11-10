@@ -330,7 +330,7 @@ class SqlRepositoriesTest {
             0,
         )
 
-        assertEquals(2L, KScale3Database.Schema.version)
+        assertEquals(3L, KScale3Database.Schema.version)
         KScale3Database.Schema.migrate(driver, 1, 2)
 
         val repo = SqlDeviceRepository(KScale3Database(driver))

@@ -31,10 +31,10 @@ import xyz.crazyh.kscale3.protocol.isValidMacAddress
 import xyz.crazyh.kscale3.session.HardwareInfo
 import xyz.crazyh.kscale3.session.PairingResult
 import xyz.crazyh.kscale3.session.ScaleSession
+import xyz.crazyh.kscale3.session.SessionError
 import xyz.crazyh.kscale3.session.SessionException
 import xyz.crazyh.kscale3.session.SessionOptions
 import xyz.crazyh.kscale3.session.SessionState
-import xyz.crazyh.kscale3.ui.errorText
 
 /** Result 屏待保存的测量（归属用户 + 会话产物）。 */
 data class PendingMeasurement(val userId: Long, val result: MeasurementResult)
@@ -45,6 +45,9 @@ sealed interface DeviceState {
     data object None : DeviceState
     data class Found(val device: PairedDevice) : DeviceState
 }
+
+/** 扫描失败：detail 为平台异常原文（可能为英文技术信息），可为空——UI 按语言映射兜底文案。 */
+data class ScanFailure(val detail: String?)
 
 /**
  * 设备扫描/配对/称重/结果暂存的共享 ViewModel（DeviceScan/Users/WeighIn/Result 共用一个实例）。
@@ -75,8 +78,8 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
 
-    private val _scanError = MutableStateFlow<String?>(null)
-    val scanError: StateFlow<String?> = _scanError.asStateFlow()
+    private val _scanError = MutableStateFlow<ScanFailure?>(null)
+    val scanError: StateFlow<ScanFailure?> = _scanError.asStateFlow()
 
     private val _scanResults = MutableStateFlow<List<BleAdvertisement>>(emptyList())
     val scanResults: StateFlow<List<BleAdvertisement>> = _scanResults.asStateFlow()
@@ -107,7 +110,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
                     }
             } catch (e: Exception) {
                 // 权限缺失/蓝牙关闭等（Kable 会抛 IllegalStateException）——转为提示，不崩溃
-                _scanError.value = e.message ?: "扫描失败（请检查蓝牙权限与开关）"
+                _scanError.value = ScanFailure(e.message)
             } finally {
                 _scanning.value = false
             }
@@ -267,15 +270,15 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private val _unitBusy = MutableStateFlow(false)
     val unitBusy: StateFlow<Boolean> = _unitBusy.asStateFlow()
 
-    private val _unitError = MutableStateFlow<String?>(null)
-    val unitError: StateFlow<String?> = _unitError.asStateFlow()
+    private val _unitError = MutableStateFlow<SessionError?>(null)
+    val unitError: StateFlow<SessionError?> = _unitError.asStateFlow()
 
     /** 恢复出厂设置的进行中标记/错误（独立于单位设置，错误显示在对应按钮下方）。 */
     private val _resetBusy = MutableStateFlow(false)
     val resetBusy: StateFlow<Boolean> = _resetBusy.asStateFlow()
 
-    private val _resetError = MutableStateFlow<String?>(null)
-    val resetError: StateFlow<String?> = _resetError.asStateFlow()
+    private val _resetError = MutableStateFlow<SessionError?>(null)
+    val resetError: StateFlow<SessionError?> = _resetError.asStateFlow()
 
     /** 任一会话（称重/注册/单位读写/恢复出厂设置）进行中——UI 用它禁用入口，避免同一时刻两条 BLE 会话。 */
     val busyOrUnit: StateFlow<Boolean> =
@@ -317,7 +320,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
             container.deviceRepository.clear()
             true
         } catch (e: SessionException) {
-            _resetError.value = errorText(e.error)
+            _resetError.value = e.error
             false
         } finally {
             _resetBusy.value = false
@@ -339,7 +342,7 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
             try {
                 block(s)
             } catch (e: SessionException) {
-                if (reportError) _unitError.value = errorText(e.error)
+                if (reportError) _unitError.value = e.error
                 else println("[KScale3] unit read failed: ${e.message}")
             } finally {
                 // 收集是异步的：先同步最后一次 hardwareInfo（单位结果），避免 cancel 时丢掉。

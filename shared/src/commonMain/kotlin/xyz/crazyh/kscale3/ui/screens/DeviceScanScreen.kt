@@ -29,9 +29,14 @@ import xyz.crazyh.kscale3.isIosPlatform
 import xyz.crazyh.kscale3.platform.rememberBluetoothPermission
 import xyz.crazyh.kscale3.protocol.isValidMacAddress
 import xyz.crazyh.kscale3.ui.components.SectionTitle
+import xyz.crazyh.kscale3.ui.i18n.LocalStrings
 import xyz.crazyh.kscale3.ui.preview.previewDevice
+import xyz.crazyh.kscale3.ui.vm.ScanFailure
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 import xyz.crazyh.kscale3.ui.vm.isLikelyScale
+
+/** 保存设备的本地校验错误（存原因而非已渲染文案，切换语言后可重新映射）。 */
+private enum class DeviceScanError { IosSelectionRequired, InvalidMac }
 
 /**
  * 设备扫描/配对屏（PLAN UI-1）：
@@ -78,7 +83,7 @@ fun DeviceScanScreen(
 private fun DeviceScanContent(
     scanning: Boolean,
     results: List<BleAdvertisement>,
-    scanError: String?,
+    scanError: ScanFailure?,
     device: PairedDevice?,
     adCount: Int,
     permissionGranted: Boolean,
@@ -91,17 +96,18 @@ private fun DeviceScanContent(
 ) {
     var macInput by remember { mutableStateOf("") }
     var selectedId by remember { mutableStateOf<String?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<DeviceScanError?>(null) }
+    val strings = LocalStrings.current
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("设备扫描与配对", style = MaterialTheme.typography.headlineSmall)
+        Text(strings.scanTitle, style = MaterialTheme.typography.headlineSmall)
 
         // 已保存设备直接可用：扫描列表只含"本次扫描收到的广播"（冷启动时为空），
         // 不应让用户误以为配对丢失、必须重新扫。
         device?.let { saved ->
             Card(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("已保存设备", style = MaterialTheme.typography.titleSmall)
+                    Text(strings.scanSavedDevice, style = MaterialTheme.typography.titleSmall)
                     Text(saved.name)
                     Text(
                         "MAC ${saved.mac}" +
@@ -109,7 +115,7 @@ private fun DeviceScanContent(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedButton(onClick = onDone, modifier = Modifier.padding(top = 8.dp)) {
-                        Text("使用已保存设备")
+                        Text(strings.scanUseSavedDevice)
                     }
                 }
             }
@@ -117,43 +123,45 @@ private fun DeviceScanContent(
 
         if (!permissionGranted) {
             Text(
-                "需要蓝牙权限才能扫描与连接——请点「授权」并在系统弹窗中允许。",
+                strings.scanPermissionRequired,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
-            Button(onClick = onRequestPermission) { Text("授权蓝牙权限") }
+            Button(onClick = onRequestPermission) { Text(strings.scanGrantPermission) }
         }
 
-        SectionTitle("设备 MAC 地址")
+        SectionTitle(strings.scanMacSection)
         OutlinedTextField(
             value = macInput,
             onValueChange = { macInput = it; error = null },
-            label = { Text(if (isIos) "秤身标签 MAC（必填）" else "MAC（留空取扫描地址，可手填覆盖）") },
+            label = {
+                Text(if (isIos) strings.scanMacLabelIos else strings.scanMacLabelAndroid)
+            },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
 
-        SectionTitle("扫描 / 选择设备")
+        SectionTitle(strings.scanChooseSection)
         Row {
             Button(
                 onClick = onStartScan,
                 enabled = !scanning && permissionGranted,
-            ) { Text(if (scanning) "扫描中…" else "开始扫描") }
+            ) { Text(if (scanning) strings.scanScanning else strings.scanStart) }
             OutlinedButton(
                 onClick = onStopScan,
                 enabled = scanning,
                 modifier = Modifier.padding(start = 8.dp)
             ) {
-                Text("停止")
+                Text(strings.scanStop)
             }
         }
         scanError?.let {
-            Text(it, color = MaterialTheme.colorScheme.error)
+            Text(strings.scanFailed(it.detail), color = MaterialTheme.colorScheme.error)
         }
 
         Text(
-            "已收到 $adCount 条广播" +
-                    if (adCount == 0 && scanning) "——若一直为 0：请上秤唤醒（秤待机时不广播），并确认系统蓝牙已开" else "",
+            strings.scanBroadcastCount(adCount) +
+                    if (adCount == 0 && scanning) strings.scanBroadcastWakeHint else "",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(vertical = 4.dp),
         )
@@ -172,7 +180,7 @@ private fun DeviceScanContent(
                 ) {
                     Row(Modifier.fillMaxWidth().padding(12.dp)) {
                         Column(Modifier.weight(1f)) {
-                            Text(adv.name ?: "(未知设备)")
+                            Text(adv.name ?: strings.scanUnknownDevice)
                             Text(
                                 adv.identifier,
                                 style = MaterialTheme.typography.bodySmall
@@ -180,7 +188,7 @@ private fun DeviceScanContent(
                         }
                         if (adv.isLikelyScale()) {
                             Text(
-                                "疑似秤",
+                                strings.scanLikelyScale,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.tertiary,
                                 modifier = Modifier.padding(end = 8.dp),
@@ -196,10 +204,8 @@ private fun DeviceScanContent(
 
         if (isIos) {
             val hint = when {
-                selected == null ->
-                    "iOS 连接需先扫描并选择设备（CoreBluetooth UUID）；MAC 只用于 RootKey，不能代替扫描。"
-
-                !macInput.isValidMacAddress() -> "请填写秤身标签上的 MAC（RootKey 需要）。"
+                selected == null -> strings.scanIosHint
+                !macInput.isValidMacAddress() -> strings.scanIosMacHint
                 else -> null
             }
             hint?.let {
@@ -211,7 +217,15 @@ private fun DeviceScanContent(
             }
         }
 
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        error?.let {
+            Text(
+                when (it) {
+                    DeviceScanError.IosSelectionRequired -> strings.scanSaveErrorIosSelection
+                    DeviceScanError.InvalidMac -> strings.scanSaveErrorInvalidMac
+                },
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
 
         Button(
             onClick = {
@@ -221,8 +235,8 @@ private fun DeviceScanContent(
                     macInput,
                 )
                 if (ok) onDone() else error =
-                    if (isIos) "请先选择扫描到的设备，并填写秤身标签 MAC"
-                    else "MAC 格式无效（应为 XX:XX:XX:XX:XX:XX）"
+                    if (isIos) DeviceScanError.IosSelectionRequired
+                    else DeviceScanError.InvalidMac
             },
             enabled = permissionGranted && if (isIos) {
                 selected != null && macInput.isValidMacAddress()
@@ -231,7 +245,7 @@ private fun DeviceScanContent(
             },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
-            Text(if (device != null) "保存并更新设备" else "保存设备并进入主界面")
+            Text(if (device != null) strings.scanSaveUpdate else strings.scanSaveAndContinue)
         }
     }
 }

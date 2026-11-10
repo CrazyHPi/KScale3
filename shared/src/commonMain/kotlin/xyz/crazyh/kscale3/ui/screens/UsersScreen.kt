@@ -35,10 +35,11 @@ import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
 import xyz.crazyh.kscale3.session.SessionState
 import xyz.crazyh.kscale3.ui.components.SessionProgressDialog
-import xyz.crazyh.kscale3.ui.errorText
+import xyz.crazyh.kscale3.ui.i18n.LocalStrings
+import xyz.crazyh.kscale3.ui.i18n.errorText
+import xyz.crazyh.kscale3.ui.i18n.sessionGuide
 import xyz.crazyh.kscale3.ui.preview.previewDevice
 import xyz.crazyh.kscale3.ui.preview.previewUsers
-import xyz.crazyh.kscale3.ui.sessionGuide
 import xyz.crazyh.kscale3.ui.vm.SessionViewModel
 
 /**
@@ -81,6 +82,7 @@ private fun UsersContent(
     onCancelSession: () -> Unit,
 ) {
     var pendingDelete by remember { mutableStateOf<UserProfile?>(null) }
+    val strings = LocalStrings.current
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -88,32 +90,32 @@ private fun UsersContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("用户管理", style = MaterialTheme.typography.headlineSmall)
-            Button(onClick = { onEditUser(null) }, enabled = !busy) { Text("添加用户") }
+            Text(strings.usersTitle, style = MaterialTheme.typography.headlineSmall)
+            Button(onClick = { onEditUser(null) }, enabled = !busy) { Text(strings.usersAdd) }
         }
 
         if (device == null) {
             Text(
-                "尚未配对设备——请先在「设备」页扫描配对（注册需要连接秤）。",
+                strings.usersNoDevice,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
         }
 
         if (users.isEmpty()) {
-            Text("暂无用户，点右上角「添加用户」建立档案。", modifier = Modifier.padding(top = 24.dp))
+            Text(strings.usersEmpty, modifier = Modifier.padding(top = 24.dp))
         }
 
         // 终态结论条
         when (val s = sessionState) {
             is SessionState.Failed -> Text(
-                errorText(s.error),
+                strings.errorText(s.error),
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
 
             is SessionState.Paired -> Text(
-                sessionGuide(s),
+                strings.sessionGuide(s),
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
@@ -138,13 +140,8 @@ private fun UsersContent(
     pendingDelete?.let { user ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("删除用户「${user.name}」？") },
-            text = {
-                Text(
-                    "将删除本机档案与该用户的全部历史测量，操作不可撤销。\n" +
-                            "秤上已注册的 HUID 不受影响。",
-                )
-            },
+            title = { Text(strings.usersDeleteTitle(user.name)) },
+            text = { Text(strings.usersDeleteMessage) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -152,11 +149,11 @@ private fun UsersContent(
                         onDeleteUser(user)
                     },
                 ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(strings.commonDelete, color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+                TextButton(onClick = { pendingDelete = null }) { Text(strings.commonCancel) }
             },
         )
     }
@@ -190,6 +187,7 @@ private fun UserCard(
     onRegister: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Column(
             Modifier.fillMaxWidth().padding(12.dp),
@@ -203,14 +201,22 @@ private fun UserCard(
                 )
                 AssistChip(
                     onClick = {},
-                    label = { Text(if (user.huid != null) "已注册" else "未注册") },
+                    label = {
+                        Text(
+                            if (user.huid != null) strings.usersRegistered
+                            else strings.usersUnregistered
+                        )
+                    },
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
             Text(
-                "${user.age} 岁 · ${user.heightCm} cm" +
-                        (user.goalWeightKg?.let { " · 目标 ${it} kg" } ?: "") +
-                        (user.lastWeightKg?.let { " · 上次 $it kg" } ?: ""),
+                strings.usersCardSummary(
+                    age = user.age,
+                    heightCm = user.heightCm,
+                    goalKg = user.goalWeightKg,
+                    lastKg = user.lastWeightKg,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
             )
@@ -219,14 +225,17 @@ private fun UserCard(
                     onClick = onEdit,
                     enabled = !busy
                 ) {
-                    Text("编辑")
+                    Text(strings.commonEdit)
                 }
                 Button(
                     onClick = onRegister,
                     enabled = canRegister && !busy,
                     modifier = Modifier.padding(start = 8.dp),
                 ) {
-                    Text(if (user.huid != null) "重新注册到秤" else "注册到秤")
+                    Text(
+                        if (user.huid != null) strings.usersReRegister
+                        else strings.usersRegister
+                    )
                 }
                 OutlinedButton(
                     onClick = onDelete,
@@ -234,7 +243,7 @@ private fun UserCard(
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.padding(start = 8.dp),
                 ) {
-                    Text("删除")
+                    Text(strings.commonDelete)
                 }
             }
         }

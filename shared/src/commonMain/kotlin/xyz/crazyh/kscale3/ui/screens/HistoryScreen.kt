@@ -26,13 +26,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-import androidx.compose.ui.tooling.preview.Preview
 import xyz.crazyh.kscale3.di.AppContainer
 import xyz.crazyh.kscale3.domain.Measurement
 import xyz.crazyh.kscale3.domain.UserProfile
@@ -43,6 +43,7 @@ import xyz.crazyh.kscale3.ui.components.SectionTitle
 import xyz.crazyh.kscale3.ui.components.WeightTrendChart
 import xyz.crazyh.kscale3.ui.components.rounded
 import xyz.crazyh.kscale3.ui.components.toTrendPoints
+import xyz.crazyh.kscale3.ui.i18n.LocalStrings
 import xyz.crazyh.kscale3.ui.preview.previewMeasurements
 import xyz.crazyh.kscale3.ui.preview.previewUsers
 import xyz.crazyh.kscale3.ui.vm.HistoryViewModel
@@ -77,9 +78,10 @@ private fun HistoryContent(
     onSelectUser: (Long?) -> Unit,
 ) {
     var detail by remember { mutableStateOf<Measurement?>(null) }
+    val strings = LocalStrings.current
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("历史与趋势", style = MaterialTheme.typography.headlineSmall)
+        Text(strings.historyTitle, style = MaterialTheme.typography.headlineSmall)
 
         // 用户筛选（单行 chips）
         Row(
@@ -88,7 +90,7 @@ private fun HistoryContent(
             FilterChip(
                 selected = selectedUserId == null,
                 onClick = { onSelectUser(null) },
-                label = { Text("全部") },
+                label = { Text(strings.historyAll) },
             )
             users.forEach { user ->
                 FilterChip(
@@ -100,10 +102,10 @@ private fun HistoryContent(
             }
         }
 
-        SectionTitle("体重趋势")
+        SectionTitle(strings.historyWeightTrend)
         if (measurements.isEmpty()) {
             Text(
-                "暂无测量数据",
+                strings.historyEmpty,
                 fontSize = 16.sp,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(12.dp).align(Alignment.CenterHorizontally)
@@ -111,9 +113,9 @@ private fun HistoryContent(
         } else {
             WeightTrendChart(points = measurements.toTrendPoints())
 
-            SectionTitle("测量列表")
+            SectionTitle(strings.historyList)
             Text(
-                "点击卡片查看详细数据",
+                strings.historyTapHint,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp),
@@ -125,9 +127,9 @@ private fun HistoryContent(
                     ) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
                             Text(formatInstant(m.measuredAt), fontWeight = FontWeight.Bold)
-                            MetricRow("体重", "${m.weightKg.rounded(2)} kg")
-                            MetricRow("体脂率", "${m.fatPct.rounded(1)} %")
-                            MetricRow("心率", "${m.heartRate} bpm")
+                            MetricRow(strings.metricWeight, "${m.weightKg.rounded(2)} kg")
+                            MetricRow(strings.metricFatPct, "${m.fatPct.rounded(1)} %")
+                            MetricRow(strings.metricHeartRate, "${m.heartRate} bpm")
                         }
                     }
                 }
@@ -147,13 +149,14 @@ private fun MeasurementDetailDialog(
     measurement: Measurement,
     onDismiss: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(formatInstant(measurement.measuredAt)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "设备时间：${measurement.deviceTs}",
+                    strings.deviceTime(measurement.deviceTs),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 MeasurementDetail(
@@ -165,7 +168,7 @@ private fun MeasurementDetailDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
+            TextButton(onClick = onDismiss) { Text(strings.commonClose) }
         },
     )
 }
