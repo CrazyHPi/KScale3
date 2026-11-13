@@ -22,6 +22,10 @@ class SqlMeasurementRepository(
         queries.forUser(userId).asFlow()
             .map { query -> query.executeAsList().map { it.toDomain() } }
 
+    override fun byId(id: Long): Flow<Measurement?> =
+        queries.byId(id).asFlow()
+            .map { query -> query.executeAsOneOrNull()?.toDomain() }
+
     override fun getAll(): Flow<List<Measurement>> =
         queries.selectAll().asFlow().map { query -> query.executeAsList().map { it.toDomain() } }
 

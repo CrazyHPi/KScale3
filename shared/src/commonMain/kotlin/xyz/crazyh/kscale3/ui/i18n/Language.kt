@@ -1,10 +1,14 @@
 package xyz.crazyh.kscale3.ui.i18n
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.intl.Locale
 import xyz.crazyh.kscale3.domain.LanguageSetting
 
 /** 实际生效的界面语言。 */
 enum class AppLanguage { Chinese, English }
+
+/** 日期/星期等本地化格式需要知道当前生效语言（文案表本身不带枚举）。 */
+val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.Chinese }
 
 /**
  * 设置 + 系统语言 → 实际生效语言。

@@ -3,10 +3,12 @@ package xyz.crazyh.kscale3.ui.i18n
 /** English strings. */
 object EnStrings : AppStrings {
 
-    // ---- Bottom tabs ----
+    // ---- Bottom tabs / profile tabs ----
+    override val tabProfile: String = "Profile"
     override val tabWeighIn: String = "Weigh"
     override val tabUsers: String = "Users"
     override val tabHistory: String = "History"
+    override val tabMembers: String = "Members"
     override val tabSettings: String = "Settings"
 
     // ---- Common buttons ----
@@ -122,8 +124,8 @@ object EnStrings : AppStrings {
     override val scanSaveAndContinue: String = "Save device and continue"
 
     // ---- Users ----
-    override val usersTitle: String = "Users"
-    override val usersAdd: String = "Add user"
+    override val usersTitle: String = "Members"
+    override val usersAdd: String = "Add member"
     override val usersNoDevice: String =
         "No scale paired — scan and pair on the Device page first (registration requires a connection)."
 
@@ -150,8 +152,8 @@ object EnStrings : AppStrings {
                 "The HUID registered on the scale is not affected."
 
     // ---- User edit ----
-    override val editNewTitle: String = "New user"
-    override val editTitle: String = "Edit user"
+    override val editNewTitle: String = "New member"
+    override val editTitle: String = "Edit member"
     override val editName: String = "Name"
     override val editMale: String = "Male"
     override val editFemale: String = "Female"
@@ -167,13 +169,13 @@ object EnStrings : AppStrings {
     override val editRegisterMode1: String = "Register on scale (Mode 1)"
 
     // ---- Weigh-in ----
-    override val weighTitle: String = "Start weighing"
+    override val weighTitle: String = "Weigh"
     override fun weighCurrentDevice(name: String): String = "Paired device: $name"
     override val weighNoDevice: String = "No scale paired — scan and pair on the Device page first."
     override val weighGoPair: String = "Pair a device"
     override val weighSelectUser: String = "Select user"
     override val weighUnregistered: String = "Not registered (register on the scale first)"
-    override val weighStart: String = "Start weighing (Mode 2)"
+    override val weighStart: String = "Start weighing"
     override val weighRecoveryGoRegister: String = "Register (finish verification)"
     override val weighRecoveryReRegister: String = "Re-register"
     override val weighRecoveryChangeUser: String = "Change user"
@@ -200,29 +202,25 @@ object EnStrings : AppStrings {
     override val settingsBleId: String = "BLE identifier"
     override val settingsWeightUnit: String = "Scale display unit"
     override val settingsConnectingScale: String = "Connecting to scale…"
-    override val settingsRegisteredUsers: String = "Registered users"
-    override val settingsNoRegisteredUsers: String = "None — register on the Users page."
-    override val settingsForgetDevice: String = "Forget paired scale"
+    override val settingsRegisteredUsers: String = "Registered members"
+    override val settingsNoRegisteredUsers: String = "None — register on Profile · Members."
+    override val settingsForgetDevice: String = "Delete scale"
     override val settingsFactoryResetting: String = "Restoring factory settings…"
     override val settingsFactoryReset: String = "Restore scale factory settings"
     override val settingsLanguage: String = "Language"
     override val settingsDebugMode: String = "Debug mode"
     override val settingsLogFramesOnly: String = "Log: frames only (hex)"
     override val settingsLogEmpty: String = "(none — start a weigh-in/registration to see frames)"
-    override val settingsForgetDeviceTitle: String = "Forget the paired scale?"
+    override val settingsForgetDeviceTitle: String = "Delete the scale?"
     override val settingsForgetDeviceMessage: String =
-        "This clears the saved scale on this device.\n" +
-                "You will need to pair again to reconnect.\n" +
-                "User profiles and weight history are kept."
+        "This clears the pairing saved on this device. Member profiles and weigh-in history are kept; scan and pair again to use the scale."
 
-    override val settingsForgetConfirm: String = "Forget"
-    override val settingsFactoryResetTitle: String = "Restore scale factory settings?"
+    override val settingsForgetConfirm: String = "Delete"
+    override val settingsFactoryResetTitle: String = "Reset the scale?"
     override val settingsFactoryResetMessage: String =
-        "This clears the bond and user data on the scale.\n" +
-                "The local pairing will also be removed; you will need to pair and register again.\n" +
-                "Local user profiles and weight history are kept."
+        "This clears all users and bonds on the scale and removes the local pairing. Member profiles and weigh-in history are kept."
 
-    override val settingsFactoryResetConfirm: String = "Restore factory settings"
+    override val settingsFactoryResetConfirm: String = "Reset"
 
     // ---- Scale display units ----
     override val unitKg: String = "Kilograms"
@@ -231,8 +229,143 @@ object EnStrings : AppStrings {
 
     // ---- Language options ----
     override val languageFollowSystem: String = "Follow system"
-    override val languageChinese: String = "中文"
+    override val languageChinese: String = "中文（简体）"
     override val languageEnglish: String = "English"
     override fun languageFollowSystemValue(effectiveName: String): String =
         "Follow system ($effectiveName)"
+
+    // ================= New copy for the redesigned screens (01–07) =================
+
+    override val profileAddMember: String = "Add member"
+    override val profileNoDeviceBanner: String = "No scale paired yet. Pair one to start weighing."
+    override val profileGoPair: String = "Pair"
+    override val statusHigh: String = "High"
+    override val statusNormal: String = "Normal"
+
+    override val historyLatest: String = "Latest measurement"
+    override val historyComparedLast: String = "vs. last"
+    override val historyRestingHeartRate: String = "Resting heart rate"
+    override val historyMetricWeight: String = "Weight"
+    override val historyMetricFat: String = "Body fat"
+    override val historyFatTrend: String = "Body fat trend"
+    override val historyRange30: String = "Last 30 days"
+    override val historyRange90: String = "Last 90 days"
+    override val historyRangeAll: String = "All"
+    override val historyRecords: String = "Weigh-in records"
+    override fun historyAllCount(count: Int): String = "All $count"
+    override val historyEmptyAction: String = "Weigh now"
+    override val historyEmptyBody: String =
+        "Complete a weigh-in to see the latest data, trends and records here."
+    override val historyNoMembers: String = "No members yet"
+    override val historyAddMemberAction: String = "Add member"
+    override fun historyHealthyRange(minPct: Int, maxPct: Int): String =
+        "Healthy $minPct–$maxPct%"
+
+    override fun historyFatStatusLine(status: String, minPct: Int, maxPct: Int): String =
+        "$status · healthy $minPct–$maxPct%"
+
+    override fun membersCount(count: Int): String = "$count member${if (count == 1) "" else "s"}"
+    override fun membersRegisteredCount(count: Int): String =
+        "$count registered on scale"
+
+    override val membersRegisterHint: String =
+        "Only members registered on the scale can start a weigh-in"
+    override val membersRegisteredOnScale: String = "Registered on scale"
+    override val membersLastWeigh: String = "Last weigh-in"
+    override val membersNoMeasurements: String = "No weigh-ins yet"
+    override val membersRegisterFirst: String = "Register to start weighing"
+    override val membersRegisterFooter: String =
+        "Once registered, the scale recognises the member and attributes measurements automatically."
+    override val membersNew: String = "New member"
+    override fun membersProfileLine(male: Boolean, age: Int, heightCm: Int): String =
+        "${if (male) editMale else editFemale} · $age y · $heightCm cm"
+
+    override fun membersLastWeighLine(weight: String, monthDay: String): String =
+        "$weight · $monthDay"
+
+    override fun membersDeleteTitle(name: String): String = "Delete member “$name”?"
+    override val membersDeleteMessage: String =
+        "This also deletes this member's weigh-in history. This cannot be undone."
+    override val membersEmpty: String =
+        "No members yet. Tap “Add member” in the bottom-right corner to create one."
+
+    override val weighDevicePaired: String = "Paired"
+    override val weighDeviceUnpaired: String = "Not paired"
+    override val weighDeviceConnecting: String = "Connecting…"
+    override val weighMembers: String = "Weigh-in member"
+    override val weighRegisteredShort: String = "Registered"
+    override val weighAdd: String = "Add"
+    override val weighNewMember: String = "New member"
+    override val weighGuideTitle: String = "Step on and hold the handle"
+    override val weighGuideSubtitle: String = "Stand barefoot and still for about 10 seconds"
+    override fun weighLastWeigh(monthDay: String, weight: String): String =
+        "Last weigh-in $monthDay · $weight"
+
+    override val weighCancelOperation: String = "Cancel weighing"
+    override val weighStateConnecting: String = "Connecting to the scale…"
+    override val weighStateAwaitingTare: String = "Step on for verification"
+    override val weighStateSyncing: String = "Syncing profile…"
+    override val weighStateMeasuring: String = "Stand still and hold the handle"
+    override val weighStateSaving: String = "Saving…"
+    override val weighStateFailed: String = "Weigh-in not completed"
+    override val weighStatePaired: String = "Registration successful"
+    override val weighNoMembers: String = "No members yet. Add one first."
+    override val weighAddMemberAction: String = "Add member"
+
+    override val resultCompleted: String = "Measurement complete"
+    override fun resultSavedTo(name: String): String = "Will be saved to $name's profile"
+    override val resultBodyComposition: String = "Body composition"
+    override val resultReferenceOnly: String = "For reference only"
+    override val resultSaving: String = "Saving…"
+    override val resultSaveDone: String = "Save and finish"
+    override val resultDiscard: String = "Discard this result"
+    override val resultDiscardTitle: String = "Discard this result?"
+    override val resultDiscardMessage: String =
+        "This measurement has not been saved. Discarding it cannot be undone."
+    override val resultSaveFailed: String = "Save failed. Please retry."
+
+    override val detailTitle: String = "Measurement details"
+    override val detailThisWeight: String = "This weigh-in"
+    override fun detailComparedLast(delta: String): String = "vs. last $delta"
+    override fun detailGoalLine(goalKg: String, diffKg: String): String =
+        "Goal $goalKg · $diffKg to go"
+
+    override fun detailGoalExceededLine(goalKg: String, extraKg: String): String =
+        "Goal $goalKg · $extraKg over"
+
+    override fun detailGoalReached(goalKg: String): String = "Goal $goalKg · reached"
+    override val detailRawData: String = "Raw data"
+    override val detailRawDataHint: String = "Device time · foot/hand impedance · heart rate"
+    override val detailDeviceTime: String = "Device time"
+    override val detailFeetImp: String = "Foot impedance"
+    override val detailHandsImp: String = "Hand impedance"
+    override val detailFootnote: String =
+        "Estimates are calculated from empirical formulas and are for reference only."
+    override val detailDelete: String = "Delete record"
+    override val detailDeleteTitle: String = "Delete this record?"
+    override val detailDeleteMessage: String = "This cannot be undone."
+    override val detailMore: String = "More"
+
+    override val settingsMyScale: String = "My scale"
+    override val settingsPreferences: String = "Preferences"
+    override val settingsMaintenance: String = "Device maintenance"
+    override val settingsAdvanced: String = "Advanced"
+    override val settingsDeleteScale: String = "Delete scale"
+    override val settingsDeleteScaleSubtitle: String =
+        "Clear local pairing; keep profiles and history"
+    override val settingsResetScale: String = "Reset scale"
+    override val settingsResetScaleSubtitle: String =
+        "Clear all users and bonds on the scale"
+    override val settingsPaired: String = "Paired"
+    override val settingsConnected: String = "Connected"
+    override val settingsUnpaired: String = "Not paired"
+    override val settingsGoPair: String = "Pair"
+    override val settingsNoDeviceShort: String = "No scale paired"
+    override val settingsDebugInfo: String = "Debug info"
+    override val settingsModel: String = "Model"
+    override val settingsSerial: String = "Serial"
+    override val settingsConfigState: String = "Config state"
+    override val settingsRegisteredHuid: String = "Registered HUID"
+    override val settingsViewFrameLog: String = "View frame log"
+    override val settingsFrameLogTitle: String = "Frame log"
 }

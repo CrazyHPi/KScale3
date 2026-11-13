@@ -9,10 +9,11 @@ sealed interface Route {
     @Serializable
     data object DeviceScan : Route
 
+    /** 档案：内部二级 Tab（历史 / 成员）。 */
     @Serializable
-    data object Users : Route
+    data object Profile : Route
 
-    /** 用户编辑/新建；[userId] 为 null 表示新建 */
+    /** 成员编辑/新建；[userId] 为 null 表示新建 */
     @Serializable
     data class UserEdit(val userId: Long? = null) : Route
 
@@ -22,9 +23,13 @@ sealed interface Route {
     @Serializable
     data object Result : Route
 
+    /** 单次测量详情（整页，替换原历史弹窗） */
     @Serializable
-    data object History : Route
+    data class MeasurementDetail(val measurementId: Long) : Route
 
     @Serializable
     data object Settings : Route
 }
+
+/** 档案页二级 Tab。 */
+enum class ProfileTab { History, Members }

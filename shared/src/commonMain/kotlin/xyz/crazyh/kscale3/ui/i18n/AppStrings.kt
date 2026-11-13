@@ -12,10 +12,12 @@ import androidx.compose.runtime.Immutable
 @Immutable
 interface AppStrings {
 
-    // ---- 底部 Tab ----
+    // ---- 底部 Tab / 档案二级 Tab ----
+    val tabProfile: String
     val tabWeighIn: String
     val tabUsers: String
     val tabHistory: String
+    val tabMembers: String
     val tabSettings: String
 
     // ---- 通用按钮 ----
@@ -194,4 +196,122 @@ interface AppStrings {
 
     /** 「跟随系统（当前生效语言）」的展示文案，[effectiveName] 为当前生效语言的选项名。 */
     fun languageFollowSystemValue(effectiveName: String): String
+
+    // ================= 重构后新增文案（设计稿 01–07） =================
+
+    // ---- 档案 / 通用状态 ----
+    val profileAddMember: String
+    val profileNoDeviceBanner: String
+    val profileGoPair: String
+    val statusHigh: String
+    val statusNormal: String
+
+    // ---- 档案 · 称重历史 ----
+    val historyLatest: String
+    val historyComparedLast: String
+    val historyRestingHeartRate: String
+    val historyMetricWeight: String
+    val historyMetricFat: String
+    val historyFatTrend: String
+    val historyRange30: String
+    val historyRange90: String
+    val historyRangeAll: String
+    val historyRecords: String
+    fun historyAllCount(count: Int): String
+    val historyEmptyAction: String
+    val historyEmptyBody: String
+    val historyNoMembers: String
+    val historyAddMemberAction: String
+    fun historyHealthyRange(minPct: Int, maxPct: Int): String
+    fun historyFatStatusLine(status: String, minPct: Int, maxPct: Int): String
+
+    // ---- 档案 · 成员 ----
+    fun membersCount(count: Int): String
+    fun membersRegisteredCount(count: Int): String
+    val membersRegisterHint: String
+    val membersRegisteredOnScale: String
+    val membersLastWeigh: String
+    val membersNoMeasurements: String
+    val membersRegisterFirst: String
+    val membersRegisterFooter: String
+    val membersNew: String
+    fun membersProfileLine(male: Boolean, age: Int, heightCm: Int): String
+    fun membersLastWeighLine(weight: String, monthDay: String): String
+    fun membersDeleteTitle(name: String): String
+    val membersDeleteMessage: String
+    val membersEmpty: String
+
+    // ---- 称重 · 准备 ----
+    val weighDevicePaired: String
+    val weighDeviceUnpaired: String
+    val weighDeviceConnecting: String
+    val weighMembers: String
+    val weighRegisteredShort: String
+    val weighAdd: String
+    val weighNewMember: String
+    val weighGuideTitle: String
+    val weighGuideSubtitle: String
+    fun weighLastWeigh(monthDay: String, weight: String): String
+    val weighCancelOperation: String
+    val weighStateConnecting: String
+    val weighStateAwaitingTare: String
+    val weighStateSyncing: String
+    val weighStateMeasuring: String
+    val weighStateSaving: String
+    val weighStateFailed: String
+    val weighStatePaired: String
+    val weighNoMembers: String
+    val weighAddMemberAction: String
+
+    // ---- 称重 · 结果 ----
+    val resultCompleted: String
+    fun resultSavedTo(name: String): String
+    val resultBodyComposition: String
+    val resultReferenceOnly: String
+    val resultSaving: String
+    val resultSaveDone: String
+    val resultDiscard: String
+    val resultDiscardTitle: String
+    val resultDiscardMessage: String
+    val resultSaveFailed: String
+
+    // ---- 测量详情 ----
+    val detailTitle: String
+    val detailThisWeight: String
+    fun detailComparedLast(delta: String): String
+    fun detailGoalLine(goalKg: String, diffKg: String): String
+    fun detailGoalExceededLine(goalKg: String, extraKg: String): String
+    fun detailGoalReached(goalKg: String): String
+    val detailRawData: String
+    val detailRawDataHint: String
+    val detailDeviceTime: String
+    val detailFeetImp: String
+    val detailHandsImp: String
+    val detailFootnote: String
+    val detailDelete: String
+    val detailDeleteTitle: String
+    val detailDeleteMessage: String
+    val detailMore: String
+
+    // ---- 设置（重构） ----
+    val settingsMyScale: String
+    val settingsPreferences: String
+    val settingsMaintenance: String
+    val settingsAdvanced: String
+    val settingsDeleteScale: String
+    val settingsDeleteScaleSubtitle: String
+    val settingsResetScale: String
+    val settingsResetScaleSubtitle: String
+    val settingsPaired: String
+    val settingsConnected: String
+    val settingsUnpaired: String
+    val settingsGoPair: String
+    val settingsNoDeviceShort: String
+    val settingsDebugInfo: String
+    val settingsModel: String
+    val settingsSerial: String
+    val settingsConfigState: String
+    val settingsRegisteredHuid: String
+    val settingsViewFrameLog: String
+    val settingsFrameLogTitle: String
 }

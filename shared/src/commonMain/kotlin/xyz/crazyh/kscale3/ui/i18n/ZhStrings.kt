@@ -3,10 +3,12 @@ package xyz.crazyh.kscale3.ui.i18n
 /** 中文文案（默认语言；现有界面原文逐条迁移自此）。 */
 object ZhStrings : AppStrings {
 
-    // ---- 底部 Tab ----
+    // ---- 底部 Tab / 档案二级 Tab ----
+    override val tabProfile: String = "档案"
     override val tabWeighIn: String = "称重"
     override val tabUsers: String = "用户"
     override val tabHistory: String = "历史"
+    override val tabMembers: String = "成员"
     override val tabSettings: String = "设置"
 
     // ---- 通用按钮 ----
@@ -103,8 +105,8 @@ object ZhStrings : AppStrings {
     override val scanSaveAndContinue: String = "保存设备并进入主界面"
 
     // ---- 用户列表 ----
-    override val usersTitle: String = "用户管理"
-    override val usersAdd: String = "添加用户"
+    override val usersTitle: String = "成员管理"
+    override val usersAdd: String = "添加成员"
     override val usersNoDevice: String = "尚未配对设备——请先在「设备」页扫描配对（注册需要连接秤）。"
     override val usersEmpty: String = "暂无用户，点右上角「添加用户」建立档案。"
     override val usersRegistered: String = "已注册"
@@ -127,8 +129,8 @@ object ZhStrings : AppStrings {
                 "秤上已注册的 HUID 不受影响。"
 
     // ---- 用户编辑 ----
-    override val editNewTitle: String = "新建用户"
-    override val editTitle: String = "编辑用户"
+    override val editNewTitle: String = "新建成员"
+    override val editTitle: String = "编辑成员"
     override val editName: String = "姓名"
     override val editMale: String = "男"
     override val editFemale: String = "女"
@@ -144,13 +146,13 @@ object ZhStrings : AppStrings {
     override val editRegisterMode1: String = "注册到秤（Mode 1）"
 
     // ---- 称重 ----
-    override val weighTitle: String = "开始称重"
+    override val weighTitle: String = "称重"
     override fun weighCurrentDevice(name: String): String = "当前配对设备：$name"
     override val weighNoDevice: String = "尚未配对设备——请先在「设备」页扫描配对。"
     override val weighGoPair: String = "去配对设备"
     override val weighSelectUser: String = "选择用户"
     override val weighUnregistered: String = "未注册（需先注册到秤）"
-    override val weighStart: String = "开始称重（Mode 2）"
+    override val weighStart: String = "开始称重"
     override val weighRecoveryGoRegister: String = "去注册（补验证称重）"
     override val weighRecoveryReRegister: String = "重新注册"
     override val weighRecoveryChangeUser: String = "换人"
@@ -177,29 +179,25 @@ object ZhStrings : AppStrings {
     override val settingsBleId: String = "BLE 标识"
     override val settingsWeightUnit: String = "秤显示单位"
     override val settingsConnectingScale: String = "连接秤..."
-    override val settingsRegisteredUsers: String = "已注册用户"
-    override val settingsNoRegisteredUsers: String = "暂无——可在「用户」页注册到秤。"
-    override val settingsForgetDevice: String = "忘记已配对的秤"
+    override val settingsRegisteredUsers: String = "已注册成员"
+    override val settingsNoRegisteredUsers: String = "暂无——可在「档案 · 成员」页注册到秤。"
+    override val settingsForgetDevice: String = "删除秤"
     override val settingsFactoryResetting: String = "正在恢复出厂设置…"
     override val settingsFactoryReset: String = "秤恢复出厂设置"
     override val settingsLanguage: String = "语言"
     override val settingsDebugMode: String = "调试模式"
     override val settingsLogFramesOnly: String = "日志 仅显示帧 (hex)"
     override val settingsLogEmpty: String = "（暂无——发起一次称重/注册后显示）"
-    override val settingsForgetDeviceTitle: String = "忘记已配对的秤？"
+    override val settingsForgetDeviceTitle: String = "删除秤？"
     override val settingsForgetDeviceMessage: String =
-        "将清除本机保存的秤\n" +
-                "再次连接需要重新配对\n" +
-                "用户档案与历史体重不会被清除"
+        "将清除本机保存的配对信息。成员档案与称重历史会保留，再次使用需要重新扫描配对。"
 
-    override val settingsForgetConfirm: String = "忘记"
-    override val settingsFactoryResetTitle: String = "秤恢复出厂设置？"
+    override val settingsForgetConfirm: String = "删除"
+    override val settingsFactoryResetTitle: String = "重置秤？"
     override val settingsFactoryResetMessage: String =
-        "将清除秤上的绑定与用户数据\n" +
-                "本机配对也会被移除，需要重新配对并注册用户\n" +
-                "本机用户档案与历史体重不会被清除"
+        "将清除秤上的全部用户与绑定，本机配对也会移除。成员档案与称重历史会保留。"
 
-    override val settingsFactoryResetConfirm: String = "恢复出厂设置"
+    override val settingsFactoryResetConfirm: String = "重置"
 
     // ---- 秤显示单位 ----
     override val unitKg: String = "公斤"
@@ -208,8 +206,132 @@ object ZhStrings : AppStrings {
 
     // ---- 语言选项 ----
     override val languageFollowSystem: String = "跟随系统"
-    override val languageChinese: String = "中文"
+    override val languageChinese: String = "中文（简体）"
     override val languageEnglish: String = "English"
     override fun languageFollowSystemValue(effectiveName: String): String =
         "跟随系统（$effectiveName）"
+
+    // ================= 重构后新增文案（设计稿 01–07） =================
+
+    override val profileAddMember: String = "添加成员"
+    override val profileNoDeviceBanner: String = "尚未配对秤，配对后即可开始称重"
+    override val profileGoPair: String = "去配对"
+    override val statusHigh: String = "偏高"
+    override val statusNormal: String = "正常"
+
+    override val historyLatest: String = "最新测量"
+    override val historyComparedLast: String = "较上次"
+    override val historyRestingHeartRate: String = "静息心率"
+    override val historyMetricWeight: String = "体重"
+    override val historyMetricFat: String = "体脂"
+    override val historyFatTrend: String = "体脂趋势"
+    override val historyRange30: String = "近 30 天"
+    override val historyRange90: String = "近 90 天"
+    override val historyRangeAll: String = "全部"
+    override val historyRecords: String = "称重记录"
+    override fun historyAllCount(count: Int): String = "全部 $count 条"
+    override val historyEmptyAction: String = "去称一次"
+    override val historyEmptyBody: String = "完成一次称重后，这里会显示最新数据、趋势与记录。"
+    override val historyNoMembers: String = "还没有成员"
+    override val historyAddMemberAction: String = "添加成员"
+    override fun historyHealthyRange(minPct: Int, maxPct: Int): String =
+        "健康范围 $minPct–$maxPct%"
+
+    override fun historyFatStatusLine(status: String, minPct: Int, maxPct: Int): String =
+        "$status · 健康 $minPct–$maxPct%"
+
+    override fun membersCount(count: Int): String = "$count 位成员"
+    override fun membersRegisteredCount(count: Int): String = "$count 位已注册到秤"
+    override val membersRegisterHint: String = "只有已注册到秤的成员才能发起称重"
+    override val membersRegisteredOnScale: String = "已注册到秤"
+    override val membersLastWeigh: String = "最近称重"
+    override val membersNoMeasurements: String = "暂无称重记录"
+    override val membersRegisterFirst: String = "注册后可开始称重"
+    override val membersRegisterFooter: String = "注册后，秤可自动识别成员并归属测量记录。"
+    override val membersNew: String = "新成员"
+    override fun membersProfileLine(male: Boolean, age: Int, heightCm: Int): String =
+        "${if (male) editMale else editFemale} · $age 岁 · $heightCm cm"
+
+    override fun membersLastWeighLine(weight: String, monthDay: String): String =
+        "$weight · $monthDay"
+
+    override fun membersDeleteTitle(name: String): String = "删除成员「$name」？"
+    override val membersDeleteMessage: String = "将同时删除该成员的称重历史，此操作不可撤销。"
+    override val membersEmpty: String = "还没有成员，点右下角「添加成员」建立档案。"
+
+    override val weighDevicePaired: String = "已配对"
+    override val weighDeviceUnpaired: String = "未配对"
+    override val weighDeviceConnecting: String = "连接中…"
+    override val weighMembers: String = "称重成员"
+    override val weighRegisteredShort: String = "已注册"
+    override val weighAdd: String = "添加"
+    override val weighNewMember: String = "新成员"
+    override val weighGuideTitle: String = "请上秤并握住把手"
+    override val weighGuideSubtitle: String = "赤脚站立，保持约 10 秒"
+    override fun weighLastWeigh(monthDay: String, weight: String): String =
+        "上次称重 $monthDay · $weight"
+
+    override val weighCancelOperation: String = "取消称重"
+    override val weighStateConnecting: String = "正在连接秤…"
+    override val weighStateAwaitingTare: String = "请上秤完成验证"
+    override val weighStateSyncing: String = "正在同步档案…"
+    override val weighStateMeasuring: String = "请站稳并握住把手"
+    override val weighStateSaving: String = "正在保存…"
+    override val weighStateFailed: String = "称重未完成"
+    override val weighStatePaired: String = "注册成功"
+    override val weighNoMembers: String = "还没有成员，先添加一位成员"
+    override val weighAddMemberAction: String = "添加成员"
+
+    override val resultCompleted: String = "测量完成"
+    override fun resultSavedTo(name: String): String = "将保存到 $name 的档案"
+    override val resultBodyComposition: String = "身体成分"
+    override val resultReferenceOnly: String = "仅供参考"
+    override val resultSaving: String = "保存中…"
+    override val resultSaveDone: String = "保存并完成"
+    override val resultDiscard: String = "放弃本次结果"
+    override val resultDiscardTitle: String = "放弃本次结果？"
+    override val resultDiscardMessage: String = "本次测量尚未保存，放弃后将无法恢复。"
+    override val resultSaveFailed: String = "保存失败，请重试"
+
+    override val detailTitle: String = "测量详情"
+    override val detailThisWeight: String = "本次体重"
+    override fun detailComparedLast(delta: String): String = "较上次 $delta"
+    override fun detailGoalLine(goalKg: String, diffKg: String): String =
+        "目标 $goalKg · 还差 $diffKg"
+
+    override fun detailGoalExceededLine(goalKg: String, extraKg: String): String =
+        "目标 $goalKg · 已超出 $extraKg"
+
+    override fun detailGoalReached(goalKg: String): String = "目标 $goalKg · 已达标"
+    override val detailRawData: String = "原始数据"
+    override val detailRawDataHint: String = "设备时间 · 脚部/手部阻抗 · 心率"
+    override val detailDeviceTime: String = "设备时间"
+    override val detailFeetImp: String = "脚部阻抗"
+    override val detailHandsImp: String = "手部阻抗"
+    override val detailFootnote: String = "估算值由经验公式计算，仅供参考。"
+    override val detailDelete: String = "删除记录"
+    override val detailDeleteTitle: String = "删除这条记录？"
+    override val detailDeleteMessage: String = "此操作不可撤销。"
+    override val detailMore: String = "更多"
+
+    override val settingsMyScale: String = "我的秤"
+    override val settingsPreferences: String = "偏好设置"
+    override val settingsMaintenance: String = "设备维护"
+    override val settingsAdvanced: String = "高级"
+    override val settingsDeleteScale: String = "删除秤"
+    override val settingsDeleteScaleSubtitle: String = "清除本机配对，保留档案与历史"
+    override val settingsResetScale: String = "重置秤"
+    override val settingsResetScaleSubtitle: String = "清除秤上全部用户与绑定"
+    override val settingsPaired: String = "已配对"
+    override val settingsConnected: String = "已连接"
+    override val settingsUnpaired: String = "未配对"
+    override val settingsGoPair: String = "去配对"
+    override val settingsNoDeviceShort: String = "尚未配对秤"
+    override val settingsDebugInfo: String = "调试信息"
+    override val settingsModel: String = "型号"
+    override val settingsSerial: String = "序列号"
+    override val settingsConfigState: String = "配置状态"
+    override val settingsRegisteredHuid: String = "已注册 HUID"
+    override val settingsViewFrameLog: String = "查看帧日志"
+    override val settingsFrameLogTitle: String = "帧日志"
 }

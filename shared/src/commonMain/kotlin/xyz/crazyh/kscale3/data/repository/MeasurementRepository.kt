@@ -7,7 +7,9 @@ import xyz.crazyh.kscale3.domain.Measurement
 interface MeasurementRepository {
     fun forUser(userId: Long): Flow<List<Measurement>>
 
-    /** 全部用户（历史屏"全部"筛选）。 */
+    fun byId(id: Long): Flow<Measurement?>
+
+    /** 全部用户（档案页趋势/记录与成员摘要）。 */
     fun getAll(): Flow<List<Measurement>>
 
     /** 入库（同事务回写 user_profile.last_weight_kg）。 */

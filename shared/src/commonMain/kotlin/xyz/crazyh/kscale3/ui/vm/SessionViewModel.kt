@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
 import xyz.crazyh.kscale3.ble.BleAdvertisement
 import xyz.crazyh.kscale3.di.AppContainer
+import xyz.crazyh.kscale3.domain.Measurement
 import xyz.crazyh.kscale3.domain.MeasurementResult
 import xyz.crazyh.kscale3.domain.PairedDevice
 import xyz.crazyh.kscale3.domain.UserProfile
@@ -72,6 +73,16 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     val users: StateFlow<List<UserProfile>> =
         container.userRepository.getAll()
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** 每位成员最近一次测量（称重页"上次称重"与结果页"较上次"）。 */
+    val latestByUser: StateFlow<Map<Long, Measurement>> =
+        container.measurementRepository.getAll()
+            .map { all ->
+                all.sortedByDescending { it.measuredAt }
+                    .groupBy { it.userId }
+                    .mapValues { (_, list) -> list.first() }
+            }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     // ---- 扫描 ----
 
@@ -360,17 +371,37 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /** 结果页保存状态：失败时保留 pending，UI 可重试。 */
+    private val _saving = MutableStateFlow(false)
+    val saving: StateFlow<Boolean> = _saving.asStateFlow()
+
+    private val _saveError = MutableStateFlow(false)
+    val saveError: StateFlow<Boolean> = _saveError.asStateFlow()
+
     fun savePendingMeasurement() {
         val pending = _pendingResult.value ?: return
+        if (_saving.value) return
+        _saving.value = true
+        _saveError.value = false
         viewModelScope.launch {
-            container.measurementRepository.insert(
-                pending.result.toMeasurement(
-                    pending.userId,
-                    now()
+            try {
+                container.measurementRepository.insert(
+                    pending.result.toMeasurement(pending.userId, now())
                 )
-            )
-            _pendingResult.value = null
+                _pendingResult.value = null
+            } catch (e: Exception) {
+                println("[KScale3] save measurement failed: ${e.message}")
+                _saveError.value = true
+            } finally {
+                _saving.value = false
+            }
         }
+    }
+
+    /** 放弃本次结果（不写库）；结果页关闭时调用。 */
+    fun discardPendingMeasurement() {
+        _saveError.value = false
+        _pendingResult.value = null
     }
 
     /**
