@@ -2,10 +2,11 @@
 
 package xyz.crazyh.kscale3.ble
 
-import com.juul.kable.Characteristic
+import com.juul.kable.DiscoveredCharacteristic
 import com.juul.kable.Peripheral
 import com.juul.kable.State
 import com.juul.kable.WriteType
+import com.juul.kable.writeWithoutResponse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,10 +38,20 @@ class KableBlePeripheral(private val peripheral: Peripheral) : BlePeripheral {
     }
 
     override suspend fun write(uuid: String, data: ByteArray, withResponse: Boolean) {
+        val characteristic = characteristic(uuid)
+        // 协议里的"无响应写"是意图；GATT 特征未必支持 Write Without Response。
+        // iOS/CoreBluetooth 会静默忽略这类写（日志："does not specify the Write Without
+        // Response property - ignoring response-less write"），不抛异常，导致命令没发出、
+        // 上层只能等到超时。这里按特征实际属性选择写类型。
+        val supportsWithoutResponse = characteristic.properties.writeWithoutResponse
         peripheral.write(
-            characteristic(uuid),
+            characteristic,
             data,
-            if (withResponse) WriteType.WithResponse else WriteType.WithoutResponse,
+            if (withResponse || !supportsWithoutResponse) {
+                WriteType.WithResponse
+            } else {
+                WriteType.WithoutResponse
+            },
         )
     }
 
@@ -54,7 +65,7 @@ class KableBlePeripheral(private val peripheral: Peripheral) : BlePeripheral {
     }
 
     /** 在服务发现结果里按特征 UUID 解析（连接后可用；多服务同 UUID 时取首个）。 */
-    private fun characteristic(uuid: String): Characteristic {
+    private fun characteristic(uuid: String): DiscoveredCharacteristic {
         val target = uuid.lowercase()
         return peripheral.services.value.orEmpty()
             .asSequence()

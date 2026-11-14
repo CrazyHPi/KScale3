@@ -40,8 +40,11 @@ class AppContainer(private val driverFactory: DriverFactory) {
     /** 扫描（疑似秤置顶由 UI 层排序，不按名称过滤）。 */
     fun createBleScanner(): BleScanner = KableBleScanner(Scanner { })
 
-    /** 按标识建外设（Android=物理 MAC，iOS=CoreBluetooth UUID）。 */
-    fun createBlePeripheral(identifier: String): BlePeripheral =
+    /**
+     * 按标识建外设（Android=物理 MAC，iOS=CoreBluetooth UUID）。
+     * suspend：iOS 在 CoreBluetooth 尚未缓存该 UUID 时需要先扫描（见 [createKablePeripheral]）。
+     */
+    suspend fun createBlePeripheral(identifier: String): BlePeripheral =
         KableBlePeripheral(createKablePeripheral(identifier))
 
     /** 每次称重/配对新建会话。 */

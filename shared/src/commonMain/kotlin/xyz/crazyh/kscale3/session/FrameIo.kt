@@ -88,11 +88,25 @@ internal class FrameIo(
      * （如单位设置的 Indication `BD 04 00 00`）会在订阅生效前丢失。
      * 可选特征订阅失败不应无限阻塞——超时后调用方继续，对应步骤按超时处理。
      */
-    suspend fun awaitSubscriptions(timeout: Duration): Boolean =
-        withTimeoutOrNull(timeout) {
-            repeat(FRAMED_UUIDS.size) { subscribed.receive() }
+    suspend fun awaitSubscriptions(timeout: Duration): Boolean {
+        val ready = mutableSetOf<String>()
+        val allReady = withTimeoutOrNull(timeout) {
+            while (ready.size < FRAMED_UUIDS.size) {
+                ready += subscribed.receive()
+            }
             true
         } ?: false
+        // 真机诊断：iOS 上若通知未开启，表现为只有 TX 没有 RX——先看这行。
+        val missing = FRAMED_UUIDS - ready
+        onLog?.invoke(
+            if (missing.isEmpty()) {
+                "[SUB] ${FRAMED_UUIDS.size}/${FRAMED_UUIDS.size} characteristics subscribed"
+            } else {
+                "[SUB] ${ready.size}/${FRAMED_UUIDS.size} subscribed; missing=${missing.joinToString()}"
+            },
+        )
+        return allReady
+    }
 
     suspend fun receive(uuid: String, step: String): Frame {
         return when (val inbound = queues.getValue(uuid).receive()) {

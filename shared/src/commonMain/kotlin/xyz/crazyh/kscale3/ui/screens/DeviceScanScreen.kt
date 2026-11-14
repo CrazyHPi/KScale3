@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +22,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import xyz.crazyh.kscale3.ble.BleAdvertisement
@@ -97,9 +100,10 @@ private fun DeviceScanContent(
     var macInput by remember { mutableStateOf("") }
     var selectedId by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<DeviceScanError?>(null) }
+    val macFocus = remember { FocusRequester() }
     val strings = LocalStrings.current
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().imePadding().padding(16.dp)) {
         Text(strings.scanTitle, style = MaterialTheme.typography.headlineSmall)
 
         // 已保存设备直接可用：扫描列表只含"本次扫描收到的广播"（冷启动时为空），
@@ -138,7 +142,7 @@ private fun DeviceScanContent(
                 Text(if (isIos) strings.scanMacLabelIos else strings.scanMacLabelAndroid)
             },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(macFocus),
         )
 
         SectionTitle(strings.scanChooseSection)
@@ -174,6 +178,11 @@ private fun DeviceScanContent(
                         // Android：扫描地址多为真实 MAC，自动带入（仍可手填覆盖）
                         if (!isIos && macInput.isBlank() && adv.identifier.isValidMacAddress()) {
                             macInput = adv.identifier
+                        }
+                        // iOS：UUID 不能当 MAC 用；选中后直接聚焦 MAC 输入框，
+                        // 避免用户以为"点了设备就该能保存"却找不到被键盘挡住的保存按钮。
+                        if (isIos && !macInput.isValidMacAddress()) {
+                            macFocus.requestFocus()
                         }
                     },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),

@@ -3,6 +3,7 @@ package xyz.crazyh.kscale3.ui.vm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -212,6 +213,9 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private var session: ScaleSession? = null
     private var sessionKey: String? = null
 
+    /** 当前称重/注册协程；取消时可连同"会话创建前"的扫描一起停掉。 */
+    private var activeOperationJob: Job? = null
+
     /** Mode 2 日常称重。 */
     fun startWeighIn(user: UserProfile) = launchOperation { s, mac ->
         val result = s.measure(user, mac)
@@ -238,6 +242,8 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun cancelSession() {
         session?.cancelOperation()
+        activeOperationJob?.cancel()
+        activeOperationJob = null
         // Cancel must dismiss the dialog even if the session already ended (activeJob == null).
         _sessionState.value = SessionState.Idle
     }
@@ -347,7 +353,18 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
         _unitBusy.value = true
         _unitError.value = null
         viewModelScope.launch {
-            val s = obtainSession(device)
+            val s = try {
+                obtainSession(device)
+            } catch (e: CancellationException) {
+                _unitBusy.value = false
+                throw e
+            } catch (e: SessionException) {
+                if (reportError) _unitError.value = e.error
+                else println("[KScale3] unit read failed: ${e.message}")
+                _pendingUnit.value = null
+                _unitBusy.value = false
+                return@launch
+            }
             // 单位读写结果经 hardwareInfo 回传（与称重会话同一出口）
             val infoJob = launch { s.hardwareInfo.collect { _hardwareInfo.value = it } }
             try {
@@ -408,15 +425,25 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
      * 取得设备的持久会话：同一设备复用（连接与 WorkKey 保持）；设备变化时关闭旧连接。
      * 连接本身由会话在首次操作时建立——不预连接（秤可能未唤醒）。
      */
-    private fun obtainSession(device: PairedDevice): ScaleSession {
+    private suspend fun obtainSession(device: PairedDevice): ScaleSession {
         val key = "${device.bleId}|${device.mac}"
         val current = session
         if (current != null && sessionKey == key) return current
-        current?.close()
-        return container.createScaleSession(
-            container.createBlePeripheral(device.bleId),
-            logOptions(),
-        ).also {
+        closeSession()
+        // iOS：CoreBluetooth 缓存里没有该 UUID 时会先扫描，失败是普通异常；
+        // 必须在协程内转成 SessionException，否则 viewModelScope 未捕获 → App 崩溃。
+        val peripheral = try {
+            container.createBlePeripheral(device.bleId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw SessionException(
+                SessionError.Disconnected,
+                "BLE peripheral unavailable (bleId=${device.bleId}): ${e.message}",
+                e,
+            )
+        }
+        return container.createScaleSession(peripheral, logOptions()).also {
             session = it
             sessionKey = key
         }
@@ -433,13 +460,25 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
     private fun launchOperation(block: suspend (ScaleSession, String) -> Unit) {
         if (_busy.value || _unitBusy.value || _resetBusy.value) return
         val device = device.value ?: return // 未配对设备：UI 层禁用入口
-        // 帧日志进 VM（SettingsScreen 调试屏消费）+ println 落 logcat 便于真机诊断
-        // （日志仅帧 hex——载荷均加密、MAC 不上线）
-        val s = obtainSession(device)
-        println("[KScale3] session start: mac=${device.mac} bleId=${device.bleId}")
         _busy.value = true
         _sessionState.value = SessionState.Idle
-        viewModelScope.launch {
+        // LAZY：先登记 job 再启动，避免"协程先跑完、字段后赋值"的取消竞态。
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            // 帧日志进 VM（SettingsScreen 调试屏消费）+ println 落 logcat 便于真机诊断
+            // （日志仅帧 hex——载荷均加密、MAC 不上线）
+            // 会话创建放在协程内：iOS 可能要先扫描，失败也不能冒到 UI 线程。
+            val s = try {
+                obtainSession(device)
+            } catch (e: CancellationException) {
+                _busy.value = false
+                throw e
+            } catch (e: SessionException) {
+                println("[KScale3] session start failed: ${e.message}")
+                _sessionState.value = SessionState.Failed(e.error)
+                _busy.value = false
+                return@launch
+            }
+            println("[KScale3] session start: mac=${device.mac} bleId=${device.bleId}")
             val stateJob = launch { s.state.collect { _sessionState.value = it } }
             val infoJob = launch { s.hardwareInfo.collect { _hardwareInfo.value = it } }
             var cancelled = false
@@ -468,8 +507,11 @@ class SessionViewModel(private val container: AppContainer) : ViewModel() {
                 stateJob.cancel()
                 infoJob.cancel()
                 _busy.value = false
+                activeOperationJob = null
             }
         }
+        activeOperationJob = job
+        job.start()
     }
 
     private fun now(): Instant = kotlin.time.Clock.System.now()
