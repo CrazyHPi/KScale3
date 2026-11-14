@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package xyz.crazyh.kscale3.protocol.crypto
 
 import kotlinx.cinterop.UByteVar
@@ -9,20 +11,20 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import platform.CommonCrypto.CCCryptorCreateWithMode
-import platform.CommonCrypto.CCCryptorFinal
-import platform.CommonCrypto.CCCryptorRefVar
-import platform.CommonCrypto.CCCryptorRelease
-import platform.CommonCrypto.CCCryptorUpdate
-import platform.CommonCrypto.CCHmac
-import platform.CommonCrypto.CC_SHA256
-import platform.CommonCrypto.CC_SHA256_DIGEST_LENGTH
-import platform.CommonCrypto.ccNoPadding
-import platform.CommonCrypto.kCCAlgorithmAES128
-import platform.CommonCrypto.kCCEncrypt
-import platform.CommonCrypto.kCCHmacAlgSHA256
-import platform.CommonCrypto.kCCModeCTR
-import platform.CommonCrypto.kCCSuccess
+import platform.CoreCrypto.CCCryptorCreateWithMode
+import platform.CoreCrypto.CCCryptorFinal
+import platform.CoreCrypto.CCCryptorRefVar
+import platform.CoreCrypto.CCCryptorRelease
+import platform.CoreCrypto.CCCryptorUpdate
+import platform.CoreCrypto.CCHmac
+import platform.CoreCrypto.CC_SHA256
+import platform.CoreCrypto.CC_SHA256_DIGEST_LENGTH
+import platform.CoreCrypto.ccNoPadding
+import platform.CoreCrypto.kCCAlgorithmAES128
+import platform.CoreCrypto.kCCEncrypt
+import platform.CoreCrypto.kCCHmacAlgSHA256
+import platform.CoreCrypto.kCCModeCTR
+import platform.CoreCrypto.kCCSuccess
 import platform.Security.SecRandomCopyBytes
 import platform.Security.kSecRandomDefault
 import platform.posix.size_tVar
